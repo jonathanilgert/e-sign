@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Document - E-Sign</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="logo">E-Sign</div>
+    <p class="tagline">Review and sign your document</p>
+  </header>
+
+  <main>
+    <section id="sign-section" class="card">
+      <div class="sign-header">
+        <h2 id="doc-title">Loading...</h2>
+        <p id="doc-subtitle" class="hint"></p>
+      </div>
+
+      <!-- PDF Preview -->
+      <div id="pdf-preview-container" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:24px;background:#e5e5e5;">
+      </div>
+      <div class="page-nav">
+        <button class="btn btn-sm" id="btn-prev">Previous</button>
+        <span id="page-info">Page 1 of 1</span>
+        <button class="btn btn-sm" id="btn-next">Next</button>
+      </div>
+
+      <!-- Field inputs -->
+      <div id="fields-form" style="margin-top:24px"></div>
+
+      <!-- Signature pad -->
+      <div id="signature-section" style="display:none;margin-top:24px">
+        <h3 style="font-size:15px;margin-bottom:8px">Your Signature</h3>
+        <p class="hint">Draw your signature below using your mouse or finger.</p>
+        <div class="sig-pad-container">
+          <canvas id="sig-canvas" width="500" height="120"></canvas>
+          <div class="sig-pad-actions">
+            <button class="btn btn-sm" id="btn-clear-sig">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Attestation -->
+      <div class="attestation">
+        <label>
+          <input type="checkbox" id="attestation-check">
+          <span>I, <strong id="signer-name-display">___</strong>, attest that by providing my digital signature and completing this document, I acknowledge that this electronically signed document is legally binding and enforceable to the same extent as if it were signed in person with a handwritten signature. I confirm that I am the person identified above and that all information I have provided is true and accurate.</span>
+        </label>
+      </div>
+
+      <button class="btn btn-primary" id="btn-submit" style="width:100%;padding:14px;font-size:16px">
+        Sign & Submit
+      </button>
+    </section>
+
+    <!-- Completed state -->
+    <section id="completed-section" class="card" style="display:none">
+      <div class="completed-banner">
+        <div class="checkmark" style="color:var(--success);font-size:64px">&#10003;</div>
+        <h2>Document Fully Executed</h2>
+        <p id="completed-message" style="color:var(--muted);margin-bottom:20px"></p>
+        <a id="download-link" class="btn btn-success" download>Download Signed PDF</a>
+        <a href="/" class="btn" style="margin-left:8px">Back to Dashboard</a>
+      </div>
+    </section>
+
+    <!-- Waiting state (sender after signing) -->
+    <section id="waiting-section" class="card" style="display:none">
+      <div class="completed-banner">
+        <div class="checkmark" style="font-size:48px">&#9993;</div>
+        <h2 style="color:var(--accent)">Document Sent for Signing</h2>
+        <p id="waiting-message" style="color:var(--muted);margin-bottom:20px"></p>
+        <a href="/" class="btn">Back to Dashboard</a>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
+  <script>
+    // ============== Signing Page ==============
+    const docId = window.location.pathname.split('/').pop();
+    const urlParams = new URLSearchParams(window.location.search);
+    const role = urlParams.get('role') || 'sender';
+
+    let doc = null;
+    let pdfDoc = null;
+    let currentPage = 1;
+    let sigCanvas, sigCtx, isDrawing = false;
+
+    // --------------- Init ---------------
+    document.addEventListener('DOMContentLoaded', async () => {
+      await loadDocument();
+      setupSignaturePad();
+      setupPageNav();
+      document.getElementById('btn-submit').addEventListener('click', submitSigning);
+    });
+
+    async function loadDocument() {
+      const res = await fetch(`/api/documents/${docId}`);
+      doc = await res.json();
+
+      if (doc.error) {
+        document.getElementById('doc-title').textContent = 'Document Not Found';
+        return;
+      }
+
+      document.getElementById('doc-title').textContent = doc.title;
+
+      // Handle different states
+      if (doc.status === 'completed') {
+        showCompletedState();
+        return;
+      }
+
+      if (role === 'sender' && doc.status === 'awaiting_recipient') {
+        showWaitingState();
+        return;
+      }
+
+      if (role === 'recipient' && doc.status !== 'awaiting_recipient') {
+        document.getElementById('doc-subtitle').textContent = 'This document is not ready for your signature yet.';
+        document.getElementById('btn-submit').style.display = 'none';
+        return;
+      }
+
+      const signerName = role === 'sender' ? doc.sender_name : doc.recipient_name;
+      document.getElementById('doc-subtitle').textContent = `Signing as: ${signerName}`;
+      document.getElementById('signer-name-display').textContent = signerName;
+
+      // Load PDF preview
+      const pdfUrl = `/api/documents/${docId}/pdf`;
+      pdfDoc = await pdfjsLib.getDocument(pdfUrl).promise;
+      renderPreviewPage(1);
+
+      // Build field inputs
+      buildFieldInputs();
+    }
+
+    async function renderPreviewPage(num) {
+      currentPage = num;
+      const page = await pdfDoc.getPage(num);
+      const scale = 1.5;
+      const viewport = page.getViewport({ scale });
+
+      const container = document.getElementById('pdf-preview-container');
+      let canvas = container.querySelector('canvas');
+      if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.style.width = '100%';
+        canvas.style.display = 'block';
+        container.appendChild(canvas);
+      }
+
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      document.getElementById('page-info').textContent = `Page ${num} of ${pdfDoc.numPages}`;
+    }
+
+    function setupPageNav() {
+      document.getElementById('btn-prev').addEventListener('click', () => {
+        if (pdfDoc && currentPage > 1) renderPreviewPage(currentPage - 1);
+      });
+      document.getElementById('btn-next').addEventListener('click', () => {
+        if (pdfDoc && currentPage < pdfDoc.numPages) renderPreviewPage(currentPage + 1);
+      });
+    }
+
+    // --------------- Build Field Inputs ---------------
+    function buildFieldInputs() {
+      const form = document.getElementById('fields-form');
+      const myFields = doc.fields.filter(f => f.role === role);
+
+      if (myFields.length === 0) {
+        form.innerHTML = '<p class="hint">No fields to fill in. Just review and sign below.</p>';
+        return;
+      }
+
+      let hasSig = false;
+
+      form.innerHTML = myFields.map(field => {
+        if (field.type === 'signature') {
+          hasSig = true;
+          return ''; // Signature handled separately
+        }
+
+        let inputHtml;
+        if (field.type === 'date') {
+          inputHtml = `<input type="date" id="input-${field.id}" value="${new Date().toISOString().split('T')[0]}">`;
+        } else {
+          const placeholder = field.type === 'name' ? 'Enter your full legal name' :
+                              field.type === 'initials' ? 'Enter your initials' :
+                              'Enter text';
+          inputHtml = `<input type="text" id="input-${field.id}" placeholder="${placeholder}">`;
+        }
+
+        return `
+          <div class="field-input-group">
+            <label>${field.label} <span class="page-ref">Page ${field.page + 1}</span></label>
+            ${inputHtml}
+          </div>
+        `;
+      }).join('');
+
+      // Show signature pad if needed
+      if (hasSig) {
+        document.getElementById('signature-section').style.display = '';
+      }
+    }
+
+    // --------------- Signature Pad ---------------
+    function setupSignaturePad() {
+      sigCanvas = document.getElementById('sig-canvas');
+      sigCtx = sigCanvas.getContext('2d');
+
+      // Set actual canvas resolution
+      const rect = sigCanvas.getBoundingClientRect();
+      sigCanvas.width = rect.width || 500;
+      sigCanvas.height = 120;
+
+      sigCtx.strokeStyle = '#1a1a2e';
+      sigCtx.lineWidth = 2;
+      sigCtx.lineCap = 'round';
+      sigCtx.lineJoin = 'round';
+
+      function getPos(e) {
+        const r = sigCanvas.getBoundingClientRect();
+        const touch = e.touches ? e.touches[0] : e;
+        return { x: touch.clientX - r.left, y: touch.clientY - r.top };
+      }
+
+      sigCanvas.addEventListener('mousedown', (e) => { isDrawing = true; sigCtx.beginPath(); const p = getPos(e); sigCtx.moveTo(p.x, p.y); });
+      sigCanvas.addEventListener('mousemove', (e) => { if (!isDrawing) return; const p = getPos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); });
+      sigCanvas.addEventListener('mouseup', () => { isDrawing = false; });
+      sigCanvas.addEventListener('mouseleave', () => { isDrawing = false; });
+
+      // Touch support
+      sigCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); isDrawing = true; sigCtx.beginPath(); const p = getPos(e); sigCtx.moveTo(p.x, p.y); });
+      sigCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (!isDrawing) return; const p = getPos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); });
+      sigCanvas.addEventListener('touchend', () => { isDrawing = false; });
+
+      document.getElementById('btn-clear-sig').addEventListener('click', () => {
+        sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+      });
+    }
+
+    // --------------- Submit ---------------
+    async function submitSigning() {
+      const attestation = document.getElementById('attestation-check').checked;
+      if (!attestation) {
+        showToast('Please check the attestation box to confirm');
+        return;
+      }
+
+      const myFields = doc.fields.filter(f => f.role === role);
+      const fieldValues = {};
+
+      for (const field of myFields) {
+        if (field.type === 'signature') continue;
+        const input = document.getElementById(`input-${field.id}`);
+        if (input) {
+          if (!input.value.trim()) {
+            showToast(`Please fill in: ${field.label}`);
+            input.focus();
+            return;
+          }
+          fieldValues[field.id] = input.value.trim();
+        }
+      }
+
+      // Get signature data
+      let signatureDataUrl = null;
+      const hasSig = myFields.some(f => f.type === 'signature');
+      if (hasSig) {
+        // Check if signature is blank
+        const imageData = sigCtx.getImageData(0, 0, sigCanvas.width, sigCanvas.height);
+        const isBlank = !imageData.data.some((val, i) => i % 4 === 3 && val > 0);
+        if (isBlank) {
+          showToast('Please draw your signature');
+          return;
+        }
+        signatureDataUrl = sigCanvas.toDataURL('image/png');
+      }
+
+      const btn = document.getElementById('btn-submit');
+      btn.disabled = true;
+      btn.textContent = 'Submitting...';
+
+      try {
+        const endpoint = role === 'sender' ? 'sign-sender' : 'sign-recipient';
+        const res = await fetch(`/api/documents/${docId}/${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fieldValues, signatureDataUrl, attestation: true })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          if (role === 'sender') {
+            showWaitingState();
+          } else {
+            showCompletedState();
+          }
+        } else {
+          showToast(data.error || 'Something went wrong');
+          btn.disabled = false;
+          btn.textContent = 'Sign & Submit';
+        }
+      } catch (err) {
+        showToast('Network error. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Sign & Submit';
+      }
+    }
+
+    // --------------- States ---------------
+    function showWaitingState() {
+      document.getElementById('sign-section').style.display = 'none';
+      document.getElementById('waiting-section').style.display = '';
+      document.getElementById('waiting-message').textContent =
+        `Your document has been sent to ${doc.recipient_name} (${doc.recipient_email}) for signing. You'll receive a copy once they complete it.`;
+    }
+
+    function showCompletedState() {
+      document.getElementById('sign-section').style.display = 'none';
+      document.getElementById('completed-section').style.display = '';
+      document.getElementById('completed-message').textContent =
+        `Both ${doc.sender_name} and ${doc.recipient_name} have signed this document. A copy has been emailed to both parties.`;
+      document.getElementById('download-link').href = `/api/documents/${docId}/pdf`;
+    }
+
+    function showToast(msg) {
+      const existing = document.querySelector('.toast');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3500);
+    }
+  </script>
+</body>
+</html>

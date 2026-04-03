@@ -1,0 +1,7 @@
+node_modules/
+.env
+esign.db
+esign.db-shm
+esign.db-wal
+uploads/
+signed/

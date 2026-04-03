@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-Sign</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="logo">E-Sign</div>
+    <p class="tagline">Simple document signing</p>
+  </header>
+
+  <main>
+    <!-- Step 1: Choose document -->
+    <section id="step-setup" class="card">
+      <h2>New Document</h2>
+
+      <div class="form-group">
+        <label>Document Source</label>
+        <div class="source-toggle">
+          <button class="btn btn-sm active" id="btn-template">Use Template</button>
+          <button class="btn btn-sm" id="btn-upload">Upload PDF</button>
+        </div>
+      </div>
+
+      <div id="template-section">
+        <div class="form-group">
+          <label for="template-select">Template</label>
+          <select id="template-select"></select>
+        </div>
+      </div>
+
+      <div id="upload-section" style="display:none">
+        <div class="form-group">
+          <label for="pdf-upload">Upload PDF</label>
+          <input type="file" id="pdf-upload" accept=".pdf">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="doc-title">Document Title</label>
+        <input type="text" id="doc-title" placeholder="e.g. Residential Tenancy Agreement - 123 Main St">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="sender-name">Your Name</label>
+          <input type="text" id="sender-name" placeholder="Full legal name">
+        </div>
+        <div class="form-group">
+          <label for="sender-email">Your Email</label>
+          <input type="email" id="sender-email" placeholder="you@example.com">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="recipient-name">Recipient Name</label>
+          <input type="text" id="recipient-name" placeholder="Tenant's full legal name">
+        </div>
+        <div class="form-group">
+          <label for="recipient-email">Recipient Email</label>
+          <input type="email" id="recipient-email" placeholder="tenant@example.com">
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="btn-prepare">Prepare Document</button>
+    </section>
+
+    <!-- Step 2: Place fields on PDF -->
+    <section id="step-fields" class="card" style="display:none">
+      <h2>Place Fields on Document</h2>
+      <p class="hint">Click on the PDF to place fields where each party needs to fill in information or sign.</p>
+
+      <div class="pdf-workspace">
+        <div style="flex:1;min-width:0">
+          <div id="pdf-container"></div>
+          <div class="page-nav">
+            <button class="btn btn-sm" id="btn-prev-page">Previous</button>
+            <span id="page-indicator">Page 1 of 1</span>
+            <button class="btn btn-sm" id="btn-next-page">Next</button>
+          </div>
+        </div>
+
+        <div class="toolbar-sidebar">
+          <h3>Field Tools</h3>
+          <div class="tool-group">
+            <label>Assign to</label>
+            <select id="field-role">
+              <option value="sender">You (Sender)</option>
+              <option value="recipient">Recipient</option>
+            </select>
+          </div>
+          <div class="tool-group">
+            <label>Field type</label>
+            <select id="field-type">
+              <option value="text">Text Field</option>
+              <option value="name">Full Name</option>
+              <option value="date">Date</option>
+              <option value="initials">Initials</option>
+              <option value="signature">Signature</option>
+            </select>
+          </div>
+          <div class="tool-group">
+            <label>Label</label>
+            <input type="text" id="field-label" placeholder="e.g. Move-in date">
+          </div>
+          <button class="btn btn-sm btn-danger" id="btn-undo">Remove Last</button>
+          <div class="color-legend">
+            <div class="legend-item"><span class="legend-dot sender"></span> Your fields</div>
+            <div class="legend-item"><span class="legend-dot recipient"></span> Their fields</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="field-summary"></div>
+
+      <button class="btn btn-primary" id="btn-done-fields">Continue to Sign</button>
+    </section>
+
+    <!-- Document list -->
+    <section id="doc-list" class="card">
+      <h2>Recent Documents</h2>
+      <div id="documents-table"></div>
+    </section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
+  <!-- Round target cursor -->
+  <div class="target-cursor" id="target-cursor"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
