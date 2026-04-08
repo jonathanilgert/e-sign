@@ -59,7 +59,7 @@ db.exec(`
 // --------------- Middleware ---------------
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: 0, etag: false }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 const upload = multer({
@@ -119,17 +119,78 @@ async function sendEmail(to, subject, html, attachments = []) {
 
 // --------------- Helpers ---------------
 
-// Auto-fit text into a field: shrink font size until it fits, return size + width
-function fitText(font, text, maxWidth, maxFontSize) {
-  let size = maxFontSize;
-  const minSize = 6;
-  while (size > minSize) {
-    const width = font.widthOfTextAtSize(text, size);
-    if (width <= maxWidth - 4) break; // 4pt padding
-    size -= 0.5;
+// Draw text within field bounds: tries single line first, wraps if needed, shrinks as last resort
+function drawFieldText(page, font, text, field) {
+  const maxSize = field.fontSize || 11;
+  const padding = 3;
+  const fieldW = field.width - padding * 2;
+  const fieldH = field.height || 18;
+  const lineSpacing = 1.25;
+
+  // Try single line at full size first
+  let size = maxSize;
+  let textWidth = font.widthOfTextAtSize(text, size);
+  if (textWidth <= fieldW) {
+    // Fits on one line - draw left-aligned from field left edge
+    page.drawText(text, {
+      x: field.x + padding, y: field.y + 4,
+      size, font, color: rgb(0, 0, 0.4)
+    });
+    return;
   }
-  const textWidth = font.widthOfTextAtSize(text, size);
-  return { size, textWidth };
+
+  // Wrap text into multiple lines
+  const words = text.split(/\s+/);
+  let lines = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const testLine = currentLine ? currentLine + ' ' + word : word;
+    if (font.widthOfTextAtSize(testLine, size) <= fieldW) {
+      currentLine = testLine;
+    } else {
+      if (currentLine) lines.push(currentLine);
+      // If a single word is too wide, shrink font for it
+      if (font.widthOfTextAtSize(word, size) > fieldW) {
+        let wordSize = size;
+        while (wordSize > 6 && font.widthOfTextAtSize(word, wordSize) > fieldW) {
+          wordSize -= 0.5;
+        }
+        size = wordSize; // Use smaller size for all remaining text
+      }
+      currentLine = word;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+
+  // Check if wrapped lines fit vertically; if not, shrink font
+  while (lines.length * size * lineSpacing > fieldH && size > 6) {
+    size -= 0.5;
+    // Re-wrap at smaller size
+    lines = [];
+    currentLine = '';
+    for (const word of words) {
+      const testLine = currentLine ? currentLine + ' ' + word : word;
+      if (font.widthOfTextAtSize(testLine, size) <= fieldW) {
+        currentLine = testLine;
+      } else {
+        if (currentLine) lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+  }
+
+  // Draw each line, starting from top of field (highest y in PDF coords)
+  const startY = field.y + fieldH - size - 2;
+  for (let i = 0; i < lines.length; i++) {
+    const lineY = startY - (i * size * lineSpacing);
+    if (lineY < field.y - 2) break; // Don't draw below field bounds
+    page.drawText(lines[i], {
+      x: field.x + padding, y: lineY,
+      size, font, color: rgb(0, 0, 0.4)
+    });
+  }
 }
 
 // --------------- API Routes ---------------
@@ -231,15 +292,8 @@ app.post('/api/documents/:id/sign-sender', async (req, res) => {
         page.drawImage(sigImage, { x: field.x, y: field.y, width: dims.width, height: dims.height });
         console.log('[SENDER SIGN] Drew signature at', field.x, field.y);
       } else if (fieldValues[field.id]) {
-        const maxSize = field.fontSize || 11;
-        const { size: fittedSize, textWidth } = fitText(font, fieldValues[field.id], field.width, maxSize);
-        // Center text horizontally within the field so it appears near where the user clicked
-        const textX = field.x + (field.width - textWidth) / 2;
-        page.drawText(fieldValues[field.id], {
-          x: textX, y: field.y + 4,
-          size: fittedSize, font, color: rgb(0, 0, 0.4)
-        });
-        console.log('[SENDER SIGN] Drew text "' + fieldValues[field.id] + '" at', textX, field.y, 'size:', fittedSize);
+        drawFieldText(page, font, fieldValues[field.id], field);
+        console.log('[SENDER SIGN] Drew text "' + fieldValues[field.id] + '" in field at', field.x, field.y, 'w:', field.width, 'h:', field.height);
       }
     }
 
@@ -318,15 +372,8 @@ app.post('/api/documents/:id/sign-recipient', async (req, res) => {
         page.drawImage(sigImage, { x: field.x, y: field.y, width: dims.width, height: dims.height });
         console.log('[RECIPIENT SIGN] Drew signature at', field.x, field.y);
       } else if (fieldValues[field.id]) {
-        const maxSize = field.fontSize || 11;
-        const { size: fittedSize, textWidth } = fitText(font, fieldValues[field.id], field.width, maxSize);
-        // Center text horizontally within the field so it appears near where the user clicked
-        const textX = field.x + (field.width - textWidth) / 2;
-        page.drawText(fieldValues[field.id], {
-          x: textX, y: field.y + 4,
-          size: fittedSize, font, color: rgb(0, 0, 0.4)
-        });
-        console.log('[RECIPIENT SIGN] Drew text "' + fieldValues[field.id] + '" at', textX, field.y, 'size:', fittedSize);
+        drawFieldText(page, font, fieldValues[field.id], field);
+        console.log('[RECIPIENT SIGN] Drew text "' + fieldValues[field.id] + '" in field at', field.x, field.y, 'w:', field.width, 'h:', field.height);
       }
     }
 

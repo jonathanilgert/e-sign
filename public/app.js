@@ -180,8 +180,8 @@ function setupFieldPlacement() {
     const typeLabels = { text: 'Text', name: 'Full Name', date: 'Date', initials: 'Initials', signature: 'Signature' };
     const label = customLabel || typeLabels[type];
 
-    const fieldW = type === 'signature' ? 180 : 100;
-    const fieldH = type === 'signature' ? 50 : 18;
+    const fieldW = type === 'signature' ? 180 : (type === 'initials' ? 50 : 120);
+    const fieldH = type === 'signature' ? 50 : (type === 'initials' ? 18 : 20);
 
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
@@ -260,14 +260,31 @@ function renderFieldMarkers() {
 
   const pageFields = state.fields.filter(f => f.page === state.currentPage - 1);
 
+  const canvas = container.querySelector('canvas');
+
   pageFields.forEach((field) => {
     const marker = document.createElement('div');
     marker.className = `field-marker ${field.role}`;
     marker.style.left = field.displayX + '%';
     marker.style.top = field.displayY + '%';
 
+    // Show actual field size scaled to display
+    if (canvas) {
+      const displayScale = canvas.getBoundingClientRect().width / canvas.width;
+      marker.style.width = (field.width * state.scale * displayScale) + 'px';
+      marker.style.height = (field.height * state.scale * displayScale) + 'px';
+    }
+
     const roleLabel = field.role === 'sender' ? 'You' : 'Them';
-    marker.innerHTML = `<span>${roleLabel}: ${field.label}</span><span class="remove-field" data-id="${field.id}">&times;</span>`;
+    marker.innerHTML = `<span class="field-marker-label">${roleLabel}: ${field.label}</span><span class="remove-field" data-id="${field.id}">&times;</span>`;
+
+    // Add resize handle for non-signature fields
+    if (field.type !== 'signature') {
+      const resizeHandle = document.createElement('div');
+      resizeHandle.className = 'resize-handle';
+      marker.appendChild(resizeHandle);
+      setupResize(resizeHandle, marker, field, container);
+    }
 
     // Drag to reposition
     setupDrag(marker, field, container);
@@ -331,6 +348,45 @@ function setupDrag(marker, field, container) {
       if (hasMoved) {
         isDragging = true; // prevent click handler from adding a new field
       }
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function setupResize(handle, marker, field, container) {
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = marker.offsetWidth;
+    const startHeight = marker.offsetHeight;
+
+    const canvas = container.querySelector('canvas');
+    const rect = canvas.getBoundingClientRect();
+    const displayScale = rect.width / canvas.width;
+
+    // Hide cursor during resize
+    const cursor = document.getElementById('target-cursor');
+    cursor.style.display = 'none';
+
+    function onMove(ev) {
+      const newW = Math.max(40, startWidth + (ev.clientX - startX));
+      const newH = Math.max(16, startHeight + (ev.clientY - startY));
+      marker.style.width = newW + 'px';
+      marker.style.height = newH + 'px';
+
+      // Update PDF dimensions
+      field.width = newW / (state.scale * displayScale);
+      field.height = newH / (state.scale * displayScale);
+    }
+
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      cursor.style.display = 'block';
     }
 
     document.addEventListener('mousemove', onMove);

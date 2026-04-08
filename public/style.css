@@ -233,18 +233,44 @@ input:focus, select:focus, textarea:focus {
 .field-marker {
   position: absolute;
   border: 2px solid;
-  border-radius: 5px;
+  border-radius: 3px;
   display: flex;
-  align-items: center;
-  padding: 3px 8px;
-  font-size: 11px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 2px 4px;
+  font-size: 10px;
   font-weight: 600;
   cursor: grab;
-  transition: box-shadow 0.15s, background 0.15s;
+  transition: box-shadow 0.15s;
   z-index: 10;
-  backdrop-filter: blur(2px);
   transform: translate(-50%, -50%);
   user-select: none;
+  overflow: hidden;
+}
+
+.field-marker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Resize handle */
+.resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, currentColor 50%);
+  opacity: 0.4;
+  border-radius: 0 0 2px 0;
+}
+
+.resize-handle:hover {
+  opacity: 0.8;
 }
 
 .field-marker.dragging {
