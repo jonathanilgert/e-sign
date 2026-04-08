@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign Document - E-Sign</title>
-  <link rel="stylesheet" href="/style.css?v=3">
+  <link rel="stylesheet" href="/style.css?v=4">
 </head>
 <body>
   <header>
@@ -133,6 +133,24 @@
       const signerName = role === 'sender' ? doc.sender_name : doc.recipient_name;
       document.getElementById('doc-subtitle').textContent = `Signing as: ${signerName}`;
       document.getElementById('signer-name-display').textContent = signerName;
+
+      // Check for pre-filled values from a saved template
+      const prefillKey = 'prefill_' + docId;
+      const prefillData = sessionStorage.getItem(prefillKey);
+      if (prefillData) {
+        const parsed = JSON.parse(prefillData);
+        // Pre-populate field values
+        if (parsed.fieldValues) {
+          Object.entries(parsed.fieldValues).forEach(([id, val]) => {
+            savedFieldValues['input-' + id] = val;
+          });
+        }
+        // Store signature for later drawing
+        if (parsed.signature) {
+          window._prefillSignature = parsed.signature;
+        }
+        sessionStorage.removeItem(prefillKey);
+      }
 
       // Load PDF preview
       const pdfUrl = `/api/documents/${docId}/pdf`;
@@ -330,6 +348,19 @@
       }
       sigCanvas.addEventListener('mouseup', markSignatureComplete);
       sigCanvas.addEventListener('touchend', markSignatureComplete);
+
+      // Load pre-filled signature from saved template
+      if (window._prefillSignature) {
+        const img = new Image();
+        img.onload = () => {
+          sigCtx.drawImage(img, 0, 0, sigCanvas.width, sigCanvas.height);
+          markSignatureComplete();
+          // Show signature section so user can see/edit it
+          document.getElementById('signature-section').style.display = '';
+        };
+        img.src = window._prefillSignature;
+        delete window._prefillSignature;
+      }
     }
 
     // --------------- Submit ---------------

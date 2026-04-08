@@ -104,18 +104,12 @@ async function prepareDocument() {
   const isSaved = document.getElementById('btn-saved').classList.contains('active');
   const isTemplate = document.getElementById('btn-template').classList.contains('active');
 
-  // For "ready_to_send" saved templates, only need recipient + title
-  if (isSaved && state.loadedSavedTemplate && state.loadedSavedTemplate.stage === 'ready_to_send') {
-    if (!recipientName || !recipientEmail) {
-      showToast('Please fill in recipient name and email');
-      return;
-    }
-    await quickSend(state.loadedSavedTemplate, title, recipientName, recipientEmail);
-    return;
-  }
-
   if (!title || !senderName || !senderEmail) {
     showToast('Please fill in document title and your info');
+    return;
+  }
+  if (!recipientName || !recipientEmail) {
+    showToast('Please fill in recipient name and email');
     return;
   }
 
@@ -132,11 +126,23 @@ async function prepareDocument() {
     const saved = await res.json();
     state.loadedSavedTemplate = saved;
 
-    // Restore fields with fresh IDs to avoid collisions
-    state.fields = saved.fields.map(f => ({
-      ...f,
-      id: 'field_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4)
-    }));
+    // Restore fields with fresh IDs, keeping a map from old to new
+    const idMap = {};
+    state.fields = saved.fields.map(f => {
+      const newId = 'field_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      idMap[f.id] = newId;
+      return { ...f, id: newId };
+    });
+
+    // If Stage 2, remap pre-filled sender values to new field IDs and stash for signing page
+    if (saved.stage === 'ready_to_send' && saved.sender_field_values) {
+      const remapped = {};
+      for (const [oldId, val] of Object.entries(saved.sender_field_values)) {
+        if (idMap[oldId]) remapped[idMap[oldId]] = val;
+      }
+      state.prefillFieldValues = remapped;
+      state.prefillSignature = saved.sender_signature || null;
+    }
 
     if (saved.template_name) {
       state.templateName = saved.template_name;
@@ -522,6 +528,13 @@ async function finishFieldPlacement() {
 
   const data = await res.json();
   if (data.id) {
+    // If loading from a "ready_to_send" template, pass pre-filled values to the signing page
+    if (state.prefillFieldValues || state.prefillSignature) {
+      sessionStorage.setItem('prefill_' + data.id, JSON.stringify({
+        fieldValues: state.prefillFieldValues || {},
+        signature: state.prefillSignature || null
+      }));
+    }
     window.location.href = `/sign/${data.id}?role=sender`;
   }
 }
@@ -624,13 +637,12 @@ async function populateSavedSelect() {
     state.loadedSavedTemplate = saved;
 
     if (saved.stage === 'ready_to_send') {
-      info.textContent = `Ready to send: ${saved.fields.length} fields, sender pre-filled as ${saved.sender_name}. Just enter recipient info and click Prepare.`;
-      // Pre-fill sender fields
+      info.textContent = `Ready to send: ${saved.fields.length} fields, sender pre-filled as ${saved.sender_name}. Fill in recipient info, click Prepare, then review/edit your fields before sending.`;
       document.getElementById('sender-name').value = saved.sender_name || '';
       document.getElementById('sender-email').value = saved.sender_email || '';
       if (saved.doc_title) document.getElementById('doc-title').value = saved.doc_title;
     } else {
-      info.textContent = `${saved.fields.length} fields placed. You'll fill in details and sign after loading.`;
+      info.textContent = `${saved.fields.length} fields placed. Fill in all details, click Prepare, then sign.`;
       if (saved.doc_title) document.getElementById('doc-title').value = saved.doc_title;
     }
   });
@@ -689,81 +701,6 @@ async function useSavedTemplate(id) {
 
   // Scroll to setup section
   document.getElementById('step-setup').scrollIntoView({ behavior: 'smooth' });
-}
-
-async function quickSend(saved, title, recipientName, recipientEmail) {
-  // For "ready_to_send" templates: create doc, auto-sign sender, send to recipient
-  const btn = document.getElementById('btn-prepare');
-  btn.disabled = true;
-  btn.textContent = 'Sending...';
-
-  try {
-    // Generate fresh field IDs
-    const fields = saved.fields.map(f => ({
-      ...f,
-      id: 'field_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
-    }));
-
-    // Remap sender field values to new IDs
-    const senderFieldValues = {};
-    if (saved.sender_field_values) {
-      const oldFields = saved.fields.filter(f => f.role === 'sender' && f.type !== 'signature');
-      oldFields.forEach((oldField, i) => {
-        const newField = fields.find((nf, j) => saved.fields[j] === oldField);
-        const idx = saved.fields.indexOf(oldField);
-        if (idx >= 0 && saved.sender_field_values[oldField.id]) {
-          senderFieldValues[fields[idx].id] = saved.sender_field_values[oldField.id];
-        }
-      });
-    }
-
-    // 1. Create the document
-    const docBody = {
-      title: title || saved.doc_title || 'Untitled',
-      templateName: saved.template_name || undefined,
-      savedTemplatePdf: saved.uploaded_pdf_path || undefined,
-      senderName: saved.sender_name,
-      senderEmail: saved.sender_email,
-      recipientName,
-      recipientEmail,
-      fields
-    };
-
-    const createRes = await fetch('/api/documents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(docBody)
-    });
-    const docData = await createRes.json();
-    if (!docData.id) throw new Error('Failed to create document');
-
-    // 2. Auto-sign as sender
-    const signRes = await fetch(`/api/documents/${docData.id}/sign-sender`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fieldValues: senderFieldValues,
-        signatureDataUrl: saved.sender_signature,
-        attestation: true
-      })
-    });
-    const signData = await signRes.json();
-
-    if (signData.success) {
-      showToast(`Document sent to ${recipientName}!`);
-      loadDocuments();
-      // Clear form
-      document.getElementById('recipient-name').value = '';
-      document.getElementById('recipient-email').value = '';
-    } else {
-      throw new Error(signData.error || 'Signing failed');
-    }
-  } catch (err) {
-    showToast('Error: ' + err.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Prepare Document';
-  }
 }
 
 async function deleteSavedTemplate(id, name) {
