@@ -156,23 +156,22 @@ async function renderPage(num) {
 }
 
 // --------------- Field Placement ---------------
+let isDragging = false;
+
 function setupFieldPlacement() {
-  document.getElementById('pdf-container').addEventListener('click', (e) => {
+  const container = document.getElementById('pdf-container');
+
+  container.addEventListener('mousedown', (e) => {
+    // Ignore if clicking an existing field marker (handled by its own drag)
     if (e.target.closest('.field-marker')) return;
 
-    const container = document.getElementById('pdf-container');
     const canvas = container.querySelector('canvas');
     if (!canvas) return;
+    e.preventDefault();
 
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-
-    const clickX = (e.clientX - rect.left);
-    const clickY = (e.clientY - rect.top);
-
-    const pdfX = (e.clientX - rect.left) * scaleX / state.scale;
-    const pdfY = (canvas.height - (e.clientY - rect.top) * scaleY) / state.scale;
 
     const role = document.getElementById('field-role').value;
     const type = document.getElementById('field-type').value;
@@ -181,16 +180,23 @@ function setupFieldPlacement() {
     const typeLabels = { text: 'Text', name: 'Full Name', date: 'Date', initials: 'Initials', signature: 'Signature' };
     const label = customLabel || typeLabels[type];
 
+    const fieldW = type === 'signature' ? 180 : 150;
+    const fieldH = type === 'signature' ? 50 : 18;
+
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    // Create the field immediately at the mousedown point
     const field = {
       id: 'field_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       role,
       type,
       label,
       page: state.currentPage - 1,
-      x: pdfX,
-      y: pdfY - (type === 'signature' ? 40 : 12),
-      width: type === 'signature' ? 180 : 150,
-      height: type === 'signature' ? 50 : 18,
+      x: (clickX * scaleX / state.scale) - fieldW / 2,
+      y: ((canvas.height - clickY * scaleY) / state.scale) - fieldH / 2,
+      width: fieldW,
+      height: fieldH,
       fontSize: 11,
       displayX: clickX / rect.width * 100,
       displayY: clickY / rect.height * 100
@@ -201,13 +207,50 @@ function setupFieldPlacement() {
     renderFieldMarkers();
     updateFieldSummary();
 
-    // Brief pulse animation on the cursor
+    // Find the marker we just created and start dragging it immediately
+    const marker = [...container.querySelectorAll('.field-marker')].find(m => {
+      const removeBtn = m.querySelector('.remove-field');
+      return removeBtn && removeBtn.dataset.id === field.id;
+    });
+    if (marker) marker.classList.add('dragging');
+
+    // Hide the target cursor during drag
     const cursor = document.getElementById('target-cursor');
-    cursor.style.transition = 'transform 0.15s';
-    cursor.style.transform = 'translate(-50%, -50%) scale(1.4)';
-    setTimeout(() => {
-      cursor.style.transform = 'translate(-50%, -50%) scale(1)';
-    }, 150);
+    cursor.style.display = 'none';
+
+    function onMove(ev) {
+      const dx = ev.clientX - (rect.left + clickX);
+      const dy = ev.clientY - (rect.top + clickY);
+
+      const newDisplayX = field.displayX + (dx / rect.width * 100);
+      const newDisplayY = field.displayY + (dy / rect.height * 100);
+
+      // Clamp within the canvas bounds (0-100%)
+      field.displayX = Math.max(0, Math.min(100, (e.clientX - rect.left + (ev.clientX - e.clientX)) / rect.width * 100));
+      field.displayY = Math.max(0, Math.min(100, (e.clientY - rect.top + (ev.clientY - e.clientY)) / rect.height * 100));
+
+      if (marker) {
+        marker.style.left = field.displayX + '%';
+        marker.style.top = field.displayY + '%';
+      }
+
+      // Update PDF coordinates
+      const pdfClickX = (field.displayX / 100) * rect.width;
+      const pdfClickY = (field.displayY / 100) * rect.height;
+      field.x = (pdfClickX * scaleX / state.scale) - field.width / 2;
+      field.y = ((canvas.height - pdfClickY * scaleY) / state.scale) - field.height / 2;
+    }
+
+    function onUp() {
+      if (marker) marker.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      // Re-show cursor
+      cursor.style.display = 'block';
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   });
 }
 
@@ -226,6 +269,9 @@ function renderFieldMarkers() {
     const roleLabel = field.role === 'sender' ? 'You' : 'Them';
     marker.innerHTML = `<span>${roleLabel}: ${field.label}</span><span class="remove-field" data-id="${field.id}">&times;</span>`;
 
+    // Drag to reposition
+    setupDrag(marker, field, container);
+
     container.appendChild(marker);
   });
 
@@ -237,6 +283,58 @@ function renderFieldMarkers() {
       renderFieldMarkers();
       updateFieldSummary();
     });
+  });
+}
+
+function setupDrag(marker, field, container) {
+  let startX, startY, startDisplayX, startDisplayY, hasMoved;
+
+  marker.addEventListener('mousedown', (e) => {
+    if (e.target.classList.contains('remove-field')) return;
+    e.preventDefault();
+    hasMoved = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    startDisplayX = field.displayX;
+    startDisplayY = field.displayY;
+    marker.classList.add('dragging');
+
+    const canvas = container.querySelector('canvas');
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    function onMove(ev) {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved = true;
+
+      const newDisplayX = startDisplayX + (dx / rect.width * 100);
+      const newDisplayY = startDisplayY + (dy / rect.height * 100);
+
+      field.displayX = newDisplayX;
+      field.displayY = newDisplayY;
+      marker.style.left = newDisplayX + '%';
+      marker.style.top = newDisplayY + '%';
+
+      // Update PDF coordinates to match
+      const pdfClickX = (newDisplayX / 100) * rect.width;
+      const pdfClickY = (newDisplayY / 100) * rect.height;
+      field.x = (pdfClickX * scaleX / state.scale) - field.width / 2;
+      field.y = ((canvas.height - pdfClickY * scaleY) / state.scale) - field.height / 2;
+    }
+
+    function onUp() {
+      marker.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (hasMoved) {
+        isDragging = true; // prevent click handler from adding a new field
+      }
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   });
 }
 
@@ -345,13 +443,26 @@ async function loadDocuments() {
       </div>
       <div><span class="status-badge ${statusClass[d.status]}">${statusLabel[d.status] || d.status}</span></div>
       <div class="meta">${new Date(d.created_at).toLocaleDateString()}</div>
-      <div>
+      <div class="doc-actions">
         ${d.status === 'draft' ? `<a href="/sign/${d.id}?role=sender" class="btn btn-sm">Sign</a>` : ''}
         ${d.status === 'awaiting_recipient' ? `<a href="/sign/${d.id}?role=recipient" class="btn btn-sm">View</a>` : ''}
         ${d.status === 'completed' ? `<a href="/api/documents/${d.id}/pdf" class="btn btn-sm btn-success" download>Download</a>` : ''}
+        <button class="btn btn-sm btn-delete" onclick="deleteDocument('${d.id}', '${d.title.replace(/'/g, "\\'")}')">&#10005;</button>
       </div>
     </div>
   `).join('');
+}
+
+// --------------- Delete Document ---------------
+async function deleteDocument(id, title) {
+  if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+  const res = await fetch(`/api/documents/${id}`, { method: 'DELETE' });
+  if (res.ok) {
+    showToast('Document deleted');
+    loadDocuments();
+  } else {
+    showToast('Failed to delete document');
+  }
 }
 
 // --------------- Toast ---------------

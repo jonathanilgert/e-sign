@@ -179,6 +179,10 @@ input:focus, select:focus, textarea:focus {
   cursor: none;
 }
 
+.sig-pad-container canvas {
+  cursor: crosshair !important;
+}
+
 /* Round target cursor */
 .target-cursor {
   position: fixed;
@@ -235,10 +239,19 @@ input:focus, select:focus, textarea:focus {
   padding: 3px 8px;
   font-size: 11px;
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
+  cursor: grab;
+  transition: box-shadow 0.15s, background 0.15s;
   z-index: 10;
   backdrop-filter: blur(2px);
+  transform: translate(-50%, -50%);
+  user-select: none;
+}
+
+.field-marker.dragging {
+  cursor: grabbing;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  z-index: 20;
+  opacity: 0.9;
 }
 
 .field-marker.sender {
@@ -392,7 +405,7 @@ input:focus, select:focus, textarea:focus {
 /* Documents table */
 .doc-row {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 120px;
+  grid-template-columns: 2fr 1fr 1fr 150px;
   gap: 12px;
   padding: 12px 0;
   border-bottom: 1px solid var(--border);
@@ -404,6 +417,27 @@ input:focus, select:focus, textarea:focus {
 
 .doc-row .title { font-weight: 500; }
 .doc-row .meta { color: var(--muted); font-size: 12px; }
+
+.doc-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.btn-delete {
+  color: var(--muted);
+  border-color: transparent;
+  background: transparent;
+  font-size: 14px;
+  padding: 4px 8px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+
+.btn-delete:hover {
+  color: var(--danger);
+  background: #fef2f2;
+}
 
 .empty-state {
   text-align: center;
@@ -522,6 +556,71 @@ input:focus, select:focus, textarea:focus {
 
 .legend-dot.sender { background: #22c55e; }
 .legend-dot.recipient { background: #f59e0b; }
+
+/* Inline field overlays on signing page */
+#pdf-preview-container {
+  position: relative;
+}
+
+.inline-field-overlay {
+  position: absolute;
+  z-index: 10;
+  transform: translate(-50%, -50%);
+}
+
+.inline-field-overlay input {
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  font-family: inherit;
+  width: 150px;
+  box-shadow: 0 1px 4px rgba(67, 97, 238, 0.2);
+}
+
+.inline-field-overlay input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.2);
+  background: white;
+}
+
+.inline-field-overlay.signature-overlay {
+  cursor: pointer;
+}
+
+.inline-field-overlay .sig-placeholder {
+  border: 2px dashed var(--accent);
+  border-radius: 4px;
+  padding: 6px 16px;
+  font-size: 11px;
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.92);
+  text-align: center;
+  min-width: 150px;
+}
+
+.inline-field-overlay .sig-placeholder.signed {
+  border-style: solid;
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.inline-field-label {
+  font-size: 9px;
+  color: var(--accent);
+  font-weight: 600;
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: rgba(255,255,255,0.8);
+  padding: 0 4px;
+  border-radius: 2px;
+}
 
 /* Completed page */
 .completed-banner {

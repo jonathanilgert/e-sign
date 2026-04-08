@@ -92,6 +92,7 @@
     let pdfDoc = null;
     let currentPage = 1;
     let sigCanvas, sigCtx, isDrawing = false;
+    const savedFieldValues = {}; // Persist field values across page navigation
 
     // --------------- Init ---------------
     document.addEventListener('DOMContentLoaded', async () => {
@@ -162,6 +163,78 @@
 
       await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
       document.getElementById('page-info').textContent = `Page ${num} of ${pdfDoc.numPages}`;
+
+      // Render inline field overlays for this page
+      renderInlineFields(num);
+    }
+
+    function renderInlineFields(pageNum) {
+      const container = document.getElementById('pdf-preview-container');
+      // Save current input values before removing overlays
+      container.querySelectorAll('.inline-field-overlay input').forEach(input => {
+        if (input.id && input.id.startsWith('input-')) {
+          savedFieldValues[input.id] = input.value;
+        }
+      });
+      // Remove old overlays
+      container.querySelectorAll('.inline-field-overlay').forEach(el => el.remove());
+
+      if (!doc || !doc.fields) return;
+      const myFields = doc.fields.filter(f => f.role === role && f.page === pageNum - 1);
+
+      myFields.forEach(field => {
+        const overlay = document.createElement('div');
+        overlay.className = 'inline-field-overlay' + (field.type === 'signature' ? ' signature-overlay' : '');
+        overlay.style.left = field.displayX + '%';
+        overlay.style.top = field.displayY + '%';
+
+        // Label above the field
+        const labelEl = document.createElement('div');
+        labelEl.className = 'inline-field-label';
+        labelEl.textContent = field.label;
+        overlay.appendChild(labelEl);
+
+        if (field.type === 'signature') {
+          const placeholder = document.createElement('div');
+          placeholder.className = 'sig-placeholder';
+          placeholder.textContent = 'Click to sign';
+          placeholder.addEventListener('click', () => {
+            document.getElementById('signature-section').style.display = '';
+            document.getElementById('signature-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+          });
+          overlay.appendChild(placeholder);
+          // Track this so we can update it when signed
+          overlay.dataset.fieldId = field.id;
+          overlay.dataset.fieldType = 'signature';
+        } else {
+          const input = document.createElement('input');
+          input.type = field.type === 'date' ? 'date' : 'text';
+          input.id = 'input-' + field.id;
+          // Restore saved value or set default
+          if (savedFieldValues[input.id] !== undefined) {
+            input.value = savedFieldValues[input.id];
+          } else if (field.type === 'date') {
+            input.value = new Date().toISOString().split('T')[0];
+          } else {
+            input.placeholder = field.type === 'name' ? 'Full legal name' :
+                               field.type === 'initials' ? 'Initials' : 'Enter text';
+          }
+          // Size the input to match the actual PDF field width (scaled to display)
+          const canvas = container.querySelector('canvas');
+          if (canvas) {
+            const displayScale = canvas.getBoundingClientRect().width / canvas.width;
+            const scaledWidth = field.width * 1.5 * displayScale; // 1.5 = PDF render scale
+            input.style.width = Math.max(60, scaledWidth) + 'px';
+          } else if (field.type === 'initials') {
+            input.style.width = '80px';
+          } else if (field.type === 'date') {
+            input.style.width = '140px';
+          }
+          overlay.appendChild(input);
+        }
+
+        container.appendChild(overlay);
+      });
     }
 
     function setupPageNav() {
@@ -183,35 +256,19 @@
         return;
       }
 
-      let hasSig = false;
+      // Fields are now rendered inline on the PDF — hide the old form area
+      form.innerHTML = '<p class="hint">Fill in the highlighted fields directly on the document above. Navigate pages to find all fields.</p>';
 
-      form.innerHTML = myFields.map(field => {
-        if (field.type === 'signature') {
-          hasSig = true;
-          return ''; // Signature handled separately
-        }
+      // Count fields per page for the hint
+      const pages = [...new Set(myFields.map(f => f.page + 1))].sort((a, b) => a - b);
+      if (pages.length > 1) {
+        form.innerHTML = `<p class="hint">Fill in the highlighted fields on the document above. Your fields are on page${pages.length > 1 ? 's' : ''} ${pages.join(', ')}.</p>`;
+      }
 
-        let inputHtml;
-        if (field.type === 'date') {
-          inputHtml = `<input type="date" id="input-${field.id}" value="${new Date().toISOString().split('T')[0]}">`;
-        } else {
-          const placeholder = field.type === 'name' ? 'Enter your full legal name' :
-                              field.type === 'initials' ? 'Enter your initials' :
-                              'Enter text';
-          inputHtml = `<input type="text" id="input-${field.id}" placeholder="${placeholder}">`;
-        }
-
-        return `
-          <div class="field-input-group">
-            <label>${field.label} <span class="page-ref">Page ${field.page + 1}</span></label>
-            ${inputHtml}
-          </div>
-        `;
-      }).join('');
-
-      // Show signature pad if needed
+      // Show signature pad if any signature fields exist (hidden until they click "Click to sign")
+      const hasSig = myFields.some(f => f.type === 'signature');
       if (hasSig) {
-        document.getElementById('signature-section').style.display = '';
+        document.getElementById('signature-section').style.display = 'none';
       }
     }
 
@@ -233,7 +290,9 @@
       function getPos(e) {
         const r = sigCanvas.getBoundingClientRect();
         const touch = e.touches ? e.touches[0] : e;
-        return { x: touch.clientX - r.left, y: touch.clientY - r.top };
+        const scaleX = sigCanvas.width / r.width;
+        const scaleY = sigCanvas.height / r.height;
+        return { x: (touch.clientX - r.left) * scaleX, y: (touch.clientY - r.top) * scaleY };
       }
 
       sigCanvas.addEventListener('mousedown', (e) => { isDrawing = true; sigCtx.beginPath(); const p = getPos(e); sigCtx.moveTo(p.x, p.y); });
@@ -248,7 +307,29 @@
 
       document.getElementById('btn-clear-sig').addEventListener('click', () => {
         sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+        // Reset signature overlay indicators
+        document.querySelectorAll('.sig-placeholder.signed').forEach(el => {
+          el.classList.remove('signed');
+          el.textContent = 'Click to sign';
+        });
       });
+
+      // When user finishes drawing a signature, update the overlay placeholders
+      function markSignatureComplete() {
+        const imageData = sigCtx.getImageData(0, 0, sigCanvas.width, sigCanvas.height);
+        const hasContent = imageData.data.some((val, i) => i % 4 === 3 && val > 0);
+        document.querySelectorAll('.sig-placeholder').forEach(el => {
+          if (hasContent) {
+            el.classList.add('signed');
+            el.textContent = 'Signed';
+          } else {
+            el.classList.remove('signed');
+            el.textContent = 'Click to sign';
+          }
+        });
+      }
+      sigCanvas.addEventListener('mouseup', markSignatureComplete);
+      sigCanvas.addEventListener('touchend', markSignatureComplete);
     }
 
     // --------------- Submit ---------------
@@ -259,20 +340,33 @@
         return;
       }
 
+      // Save any currently visible input values before collecting
+      document.querySelectorAll('.inline-field-overlay input').forEach(input => {
+        if (input.id && input.id.startsWith('input-')) {
+          savedFieldValues[input.id] = input.value;
+        }
+      });
+
       const myFields = doc.fields.filter(f => f.role === role);
       const fieldValues = {};
 
       for (const field of myFields) {
         if (field.type === 'signature') continue;
-        const input = document.getElementById(`input-${field.id}`);
-        if (input) {
-          if (!input.value.trim()) {
-            showToast(`Please fill in: ${field.label}`);
-            input.focus();
-            return;
+        const inputId = `input-${field.id}`;
+        // Check DOM first, then saved values (for fields on other pages)
+        const input = document.getElementById(inputId);
+        const value = input ? input.value : (savedFieldValues[inputId] || '');
+        if (!value.trim()) {
+          // Navigate to the page with the missing field
+          if (field.page + 1 !== currentPage) {
+            renderPreviewPage(field.page + 1);
           }
-          fieldValues[field.id] = input.value.trim();
+          showToast(`Please fill in: ${field.label} (Page ${field.page + 1})`);
+          const targetInput = document.getElementById(inputId);
+          if (targetInput) targetInput.focus();
+          return;
         }
+        fieldValues[field.id] = value.trim();
       }
 
       // Get signature data

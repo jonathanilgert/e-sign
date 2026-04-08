@@ -1,9 +1,14 @@
+require('dotenv').config();
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
+const { execSync } = require('child_process');
+const { Resend } = require('resend');
 const nodemailer = require('nodemailer');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 
@@ -13,6 +18,7 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 
 // --------------- Config ---------------
 const config = {
+  resendApiKey: process.env.RESEND_API_KEY || '',
   smtp: {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT || '587'),
@@ -66,16 +72,38 @@ const upload = multer({
 });
 
 // --------------- Email ---------------
+const resend = config.resendApiKey ? new Resend(config.resendApiKey) : null;
+
 function getTransporter() {
   if (!config.smtp.auth.user) return null;
   return nodemailer.createTransport(config.smtp);
 }
 
 async function sendEmail(to, subject, html, attachments = []) {
+  // Use Resend if configured (works over HTTPS, no SMTP port needed)
+  if (resend) {
+    const emailData = {
+      from: `${config.fromName} <${config.fromEmail}>`,
+      to,
+      subject,
+      html
+    };
+    if (attachments.length > 0) {
+      emailData.attachments = attachments.map(a => ({
+        filename: a.filename,
+        content: fs.readFileSync(a.path).toString('base64')
+      }));
+    }
+    await resend.emails.send(emailData);
+    console.log(`[EMAIL SENT via Resend] To: ${to} | Subject: ${subject}`);
+    return true;
+  }
+
+  // Fallback to SMTP
   const transporter = getTransporter();
   if (!transporter) {
     console.log(`[EMAIL SKIPPED] To: ${to} | Subject: ${subject}`);
-    console.log('  Configure SMTP_USER and SMTP_PASS to enable email.');
+    console.log('  Configure RESEND_API_KEY or SMTP_USER/SMTP_PASS to enable email.');
     return false;
   }
   await transporter.sendMail({
@@ -85,8 +113,22 @@ async function sendEmail(to, subject, html, attachments = []) {
     html,
     attachments
   });
-  console.log(`[EMAIL SENT] To: ${to} | Subject: ${subject}`);
+  console.log(`[EMAIL SENT via SMTP] To: ${to} | Subject: ${subject}`);
   return true;
+}
+
+// --------------- Helpers ---------------
+
+// Auto-fit text into a field: shrink font size until it fits within field.width
+function fitText(font, text, maxWidth, maxFontSize) {
+  let size = maxFontSize;
+  const minSize = 6;
+  while (size > minSize) {
+    const width = font.widthOfTextAtSize(text, size);
+    if (width <= maxWidth - 4) break; // 4pt padding
+    size -= 0.5;
+  }
+  return size;
 }
 
 // --------------- API Routes ---------------
@@ -162,39 +204,54 @@ app.post('/api/documents/:id/sign-sender', async (req, res) => {
     const { fieldValues, signatureDataUrl, attestation } = req.body;
     if (!attestation) return res.status(400).json({ error: 'Attestation required' });
 
-    // Embed sender fields into PDF
+    // Build overlay PDF with sender fields, then stamp onto original
     const pdfBytes = fs.readFileSync(doc.pdf_path);
-    const pdfDoc = await PDFDocument.load(pdfBytes);
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const origPdf = await PDFDocument.load(pdfBytes);
+    const overlay = await PDFDocument.create();
+    const font = await overlay.embedFont(StandardFonts.Helvetica);
+
+    // Create blank pages matching original dimensions
+    for (let i = 0; i < origPdf.getPageCount(); i++) {
+      const p = origPdf.getPage(i);
+      overlay.addPage([p.getWidth(), p.getHeight()]);
+    }
 
     const fields = JSON.parse(doc.fields || '[]');
+    console.log('[SENDER SIGN] fieldValues:', JSON.stringify(fieldValues));
+    console.log('[SENDER SIGN] has signature:', !!signatureDataUrl);
     for (const field of fields) {
-      if (field.role !== 'sender' || !fieldValues[field.id]) continue;
-      const page = pdfDoc.getPage(field.page);
-      if (field.type === 'signature' && signatureDataUrl) {
+      if (field.role !== 'sender') continue;
+      const page = overlay.getPage(field.page);
+      if (field.type === 'signature') {
+        if (!signatureDataUrl) continue;
         const sigBytes = Buffer.from(signatureDataUrl.split(',')[1], 'base64');
-        const sigImage = await pdfDoc.embedPng(sigBytes);
+        const sigImage = await overlay.embedPng(sigBytes);
         const dims = sigImage.scale(Math.min(field.width / sigImage.width, field.height / sigImage.height));
         page.drawImage(sigImage, { x: field.x, y: field.y, width: dims.width, height: dims.height });
-      } else {
+        console.log('[SENDER SIGN] Drew signature at', field.x, field.y);
+      } else if (fieldValues[field.id]) {
+        const maxSize = field.fontSize || 11;
+        const fittedSize = fitText(font, fieldValues[field.id], field.width, maxSize);
         page.drawText(fieldValues[field.id], {
-          x: field.x + 2,
-          y: field.y + 4,
-          size: field.fontSize || 11,
-          font: font,
-          color: rgb(0, 0, 0.4)
+          x: field.x + 2, y: field.y + 4,
+          size: fittedSize, font, color: rgb(0, 0, 0.4)
         });
+        console.log('[SENDER SIGN] Drew text "' + fieldValues[field.id] + '" at', field.x, field.y, 'size:', fittedSize);
       }
     }
 
-    // Add attestation footer to last page
-    const lastPage = pdfDoc.getPage(pdfDoc.getPageCount() - 1);
+    // Attestation footer
+    const lastPage = overlay.getPage(overlay.getPageCount() - 1);
     const attestText = `Digitally signed by ${doc.sender_name} on ${new Date().toISOString()} | IP: ${req.ip}`;
-    lastPage.drawText(attestText, { x: 30, y: 20, size: 7, font: font, color: rgb(0.4, 0.4, 0.4) });
+    lastPage.drawText(attestText, { x: 30, y: 20, size: 7, font, color: rgb(0.4, 0.4, 0.4) });
 
-    const newPdfBytes = await pdfDoc.save();
-    fs.writeFileSync(doc.pdf_path, newPdfBytes);
+    // Save overlay and merge with original using qpdf
+    const overlayPath = doc.pdf_path + '.overlay.pdf';
+    const mergedPath = doc.pdf_path + '.merged.pdf';
+    fs.writeFileSync(overlayPath, await overlay.save());
+    execSync(`qpdf "${doc.pdf_path}" --overlay "${overlayPath}" -- "${mergedPath}"`);
+    fs.renameSync(mergedPath, doc.pdf_path);
+    fs.unlinkSync(overlayPath);
 
     // Update DB
     db.prepare(`
@@ -233,40 +290,52 @@ app.post('/api/documents/:id/sign-recipient', async (req, res) => {
     const { fieldValues, signatureDataUrl, attestation } = req.body;
     if (!attestation) return res.status(400).json({ error: 'Attestation required' });
 
-    // Embed recipient fields into PDF
+    // Build overlay PDF with recipient fields, then stamp onto original
     const pdfBytes = fs.readFileSync(doc.pdf_path);
-    const pdfDoc = await PDFDocument.load(pdfBytes);
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const origPdf = await PDFDocument.load(pdfBytes);
+    const overlay = await PDFDocument.create();
+    const font = await overlay.embedFont(StandardFonts.Helvetica);
+
+    for (let i = 0; i < origPdf.getPageCount(); i++) {
+      const p = origPdf.getPage(i);
+      overlay.addPage([p.getWidth(), p.getHeight()]);
+    }
 
     const fields = JSON.parse(doc.fields || '[]');
+    console.log('[RECIPIENT SIGN] fieldValues:', JSON.stringify(fieldValues));
+    console.log('[RECIPIENT SIGN] has signature:', !!signatureDataUrl);
     for (const field of fields) {
-      if (field.role !== 'recipient' || !fieldValues[field.id]) continue;
-      const page = pdfDoc.getPage(field.page);
-      if (field.type === 'signature' && signatureDataUrl) {
+      if (field.role !== 'recipient') continue;
+      const page = overlay.getPage(field.page);
+      if (field.type === 'signature') {
+        if (!signatureDataUrl) continue;
         const sigBytes = Buffer.from(signatureDataUrl.split(',')[1], 'base64');
-        const sigImage = await pdfDoc.embedPng(sigBytes);
+        const sigImage = await overlay.embedPng(sigBytes);
         const dims = sigImage.scale(Math.min(field.width / sigImage.width, field.height / sigImage.height));
         page.drawImage(sigImage, { x: field.x, y: field.y, width: dims.width, height: dims.height });
-      } else {
+        console.log('[RECIPIENT SIGN] Drew signature at', field.x, field.y);
+      } else if (fieldValues[field.id]) {
+        const maxSize = field.fontSize || 11;
+        const fittedSize = fitText(font, fieldValues[field.id], field.width, maxSize);
         page.drawText(fieldValues[field.id], {
-          x: field.x + 2,
-          y: field.y + 4,
-          size: field.fontSize || 11,
-          font: font,
-          color: rgb(0, 0, 0.4)
+          x: field.x + 2, y: field.y + 4,
+          size: fittedSize, font, color: rgb(0, 0, 0.4)
         });
+        console.log('[RECIPIENT SIGN] Drew text "' + fieldValues[field.id] + '" at', field.x, field.y, 'size:', fittedSize);
       }
     }
 
-    // Add attestation footer
-    const lastPage = pdfDoc.getPage(pdfDoc.getPageCount() - 1);
+    // Attestation footer
+    const lastPage = overlay.getPage(overlay.getPageCount() - 1);
     const attestText = `Digitally signed by ${doc.recipient_name} on ${new Date().toISOString()} | IP: ${req.ip}`;
-    lastPage.drawText(attestText, { x: 30, y: 10, size: 7, font: font, color: rgb(0.4, 0.4, 0.4) });
+    lastPage.drawText(attestText, { x: 30, y: 10, size: 7, font, color: rgb(0.4, 0.4, 0.4) });
 
-    // Save final PDF
+    // Save overlay and merge with original using qpdf
+    const overlayPath = doc.pdf_path + '.overlay.pdf';
     const finalPath = path.join(__dirname, 'signed', `${doc.id}-final.pdf`);
-    const finalBytes = await pdfDoc.save();
-    fs.writeFileSync(finalPath, finalBytes);
+    fs.writeFileSync(overlayPath, await overlay.save());
+    execSync(`qpdf "${doc.pdf_path}" --overlay "${overlayPath}" -- "${finalPath}"`);
+    fs.unlinkSync(overlayPath);
 
     // Update DB
     db.prepare(`
@@ -309,6 +378,19 @@ app.post('/api/documents/:id/sign-recipient', async (req, res) => {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Delete a document
+app.delete('/api/documents/:id', (req, res) => {
+  const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+  // Delete associated PDF files
+  try { if (doc.pdf_path && fs.existsSync(doc.pdf_path)) fs.unlinkSync(doc.pdf_path); } catch (e) { /* ignore */ }
+  try { if (doc.final_pdf_path && fs.existsSync(doc.final_pdf_path)) fs.unlinkSync(doc.final_pdf_path); } catch (e) { /* ignore */ }
+
+  db.prepare('DELETE FROM documents WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
 });
 
 // List all documents
