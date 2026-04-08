@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign Document - E-Sign</title>
-  <link rel="stylesheet" href="/style.css?v=2">
+  <link rel="stylesheet" href="/style.css?v=3">
 </head>
 <body>
   <header>
@@ -399,6 +399,27 @@
 
         if (data.success) {
           if (role === 'sender') {
+            // Offer to save as reusable template
+            if (confirm('Document sent! Would you like to save this as a reusable template?\n\nThis saves your field layout, filled-in details, and signature so you can send to new tenants with one click.')) {
+              const templateName = prompt('Name this template:', doc.title || 'My Lease Template');
+              if (templateName) {
+                await fetch('/api/saved-templates', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    name: templateName,
+                    stage: 'ready_to_send',
+                    templateName: doc.template_name || null,
+                    fields: doc.fields,
+                    senderName: doc.sender_name,
+                    senderEmail: doc.sender_email,
+                    senderFieldValues: fieldValues,
+                    senderSignature: signatureDataUrl,
+                    docTitle: doc.title
+                  })
+                });
+              }
+            }
             showWaitingState();
           } else {
             showCompletedState();

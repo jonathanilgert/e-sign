@@ -8,6 +8,8 @@ let state = {
   pdfSource: null,
   templateName: null,
   uploadedPath: null,
+  savedPdfPath: null,
+  loadedSavedTemplate: null,
   scale: 1.5
 };
 
@@ -15,6 +17,7 @@ let state = {
 document.addEventListener('DOMContentLoaded', () => {
   loadTemplates();
   loadDocuments();
+  loadSavedTemplates();
   setupSourceToggle();
   setupFieldPlacement();
   setupPageNav();
@@ -23,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-prepare').addEventListener('click', prepareDocument);
   document.getElementById('btn-done-fields').addEventListener('click', finishFieldPlacement);
   document.getElementById('btn-undo').addEventListener('click', removeLastField);
+  document.getElementById('btn-save-template').addEventListener('click', saveFieldsAsTemplate);
 });
 
 // --------------- Target Cursor ---------------
@@ -71,19 +75,21 @@ async function loadTemplates() {
 function setupSourceToggle() {
   const btnTemplate = document.getElementById('btn-template');
   const btnUpload = document.getElementById('btn-upload');
+  const btnSaved = document.getElementById('btn-saved');
+  const sections = ['template-section', 'upload-section', 'saved-section'];
 
-  btnTemplate.addEventListener('click', () => {
-    btnTemplate.classList.add('active');
-    btnUpload.classList.remove('active');
-    document.getElementById('template-section').style.display = '';
-    document.getElementById('upload-section').style.display = 'none';
-  });
+  function activate(activeBtn, showSection) {
+    [btnTemplate, btnUpload, btnSaved].forEach(b => b.classList.remove('active'));
+    activeBtn.classList.add('active');
+    sections.forEach(s => document.getElementById(s).style.display = 'none');
+    document.getElementById(showSection).style.display = '';
+  }
 
-  btnUpload.addEventListener('click', () => {
-    btnUpload.classList.add('active');
-    btnTemplate.classList.remove('active');
-    document.getElementById('upload-section').style.display = '';
-    document.getElementById('template-section').style.display = 'none';
+  btnTemplate.addEventListener('click', () => activate(btnTemplate, 'template-section'));
+  btnUpload.addEventListener('click', () => activate(btnUpload, 'upload-section'));
+  btnSaved.addEventListener('click', () => {
+    activate(btnSaved, 'saved-section');
+    populateSavedSelect();
   });
 }
 
@@ -95,19 +101,54 @@ async function prepareDocument() {
   const recipientName = document.getElementById('recipient-name').value.trim();
   const recipientEmail = document.getElementById('recipient-email').value.trim();
 
-  if (!title || !senderName || !senderEmail || !recipientName || !recipientEmail) {
-    showToast('Please fill in all fields');
+  const isSaved = document.getElementById('btn-saved').classList.contains('active');
+  const isTemplate = document.getElementById('btn-template').classList.contains('active');
+
+  // For "ready_to_send" saved templates, only need recipient + title
+  if (isSaved && state.loadedSavedTemplate && state.loadedSavedTemplate.stage === 'ready_to_send') {
+    if (!recipientName || !recipientEmail) {
+      showToast('Please fill in recipient name and email');
+      return;
+    }
+    await quickSend(state.loadedSavedTemplate, title, recipientName, recipientEmail);
+    return;
+  }
+
+  if (!title || !senderName || !senderEmail) {
+    showToast('Please fill in document title and your info');
     return;
   }
 
   state.docInfo = { title, senderName, senderEmail, recipientName, recipientEmail };
 
-  const isTemplate = document.getElementById('btn-template').classList.contains('active');
   let pdfUrl;
 
-  if (isTemplate) {
+  if (isSaved) {
+    const selectEl = document.getElementById('saved-select');
+    const templateId = selectEl.value;
+    if (!templateId) { showToast('Please select a saved template'); return; }
+
+    const res = await fetch(`/api/saved-templates/${templateId}`);
+    const saved = await res.json();
+    state.loadedSavedTemplate = saved;
+
+    // Restore fields with fresh IDs to avoid collisions
+    state.fields = saved.fields.map(f => ({
+      ...f,
+      id: 'field_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4)
+    }));
+
+    if (saved.template_name) {
+      state.templateName = saved.template_name;
+      pdfUrl = `/api/templates/${encodeURIComponent(saved.template_name)}`;
+    } else if (saved.uploaded_pdf_path) {
+      state.savedPdfPath = saved.uploaded_pdf_path;
+      pdfUrl = `/uploads/${saved.uploaded_pdf_path.split(/[/\\]/).pop()}`;
+    }
+  } else if (isTemplate) {
     state.templateName = document.getElementById('template-select').value;
     pdfUrl = `/api/templates/${encodeURIComponent(state.templateName)}`;
+    state.fields = [];
   } else {
     const fileInput = document.getElementById('pdf-upload');
     if (!fileInput.files[0]) { showToast('Please select a PDF'); return; }
@@ -117,20 +158,22 @@ async function prepareDocument() {
     const uploadData = await uploadRes.json();
     state.uploadedPath = uploadData.path;
     pdfUrl = `/uploads/${uploadData.path.split(/[/\\]/).pop()}`;
+    state.fields = [];
   }
 
   const loadingTask = pdfjsLib.getDocument(pdfUrl);
   state.pdfDoc = await loadingTask.promise;
   state.totalPages = state.pdfDoc.numPages;
   state.currentPage = 1;
-  state.fields = [];
 
   document.getElementById('step-setup').style.display = 'none';
   document.getElementById('step-fields').style.display = '';
   document.getElementById('doc-list').style.display = 'none';
+  document.getElementById('saved-templates-section').style.display = 'none';
   document.querySelector('main').classList.add('workspace-mode');
 
   renderPage(state.currentPage);
+  if (state.fields.length > 0) updateFieldSummary();
 }
 
 // --------------- PDF Rendering ---------------
@@ -454,10 +497,16 @@ async function finishFieldPlacement() {
     if (!confirm('You haven\'t placed signature fields for both parties. Continue anyway?')) return;
   }
 
+  if (!state.docInfo.recipientName || !state.docInfo.recipientEmail) {
+    showToast('Please go back and fill in the recipient name and email');
+    return;
+  }
+
   const body = {
     title: state.docInfo.title,
     templateName: state.templateName || undefined,
     pdfSource: state.uploadedPath || undefined,
+    savedTemplatePdf: state.savedPdfPath || undefined,
     senderName: state.docInfo.senderName,
     senderEmail: state.docInfo.senderEmail,
     recipientName: state.docInfo.recipientName,
@@ -518,6 +567,213 @@ async function deleteDocument(id, title) {
     loadDocuments();
   } else {
     showToast('Failed to delete document');
+  }
+}
+
+// --------------- Saved Templates ---------------
+
+async function loadSavedTemplates() {
+  const res = await fetch('/api/saved-templates');
+  const templates = await res.json();
+  const container = document.getElementById('saved-templates-list');
+
+  if (templates.length === 0) {
+    container.innerHTML = '<div class="empty-state">No saved templates yet. Place fields on a document and click "Save as Template".</div>';
+    return;
+  }
+
+  const stageLabel = { fields_placed: 'Fields Only', ready_to_send: 'Ready to Send' };
+  const stageClass = { fields_placed: 'fields-placed', ready_to_send: 'ready-to-send' };
+
+  container.innerHTML = templates.map(t => `
+    <div class="doc-row">
+      <div>
+        <div class="title">${t.name}</div>
+        <div class="meta">${t.doc_title || 'No title'}</div>
+      </div>
+      <div><span class="status-badge ${stageClass[t.stage]}">${stageLabel[t.stage]}</span></div>
+      <div class="meta">${new Date(t.created_at).toLocaleDateString()}</div>
+      <div class="doc-actions">
+        <button class="btn btn-sm btn-primary" onclick="useSavedTemplate('${t.id}')">Use</button>
+        <button class="btn btn-sm btn-delete" onclick="deleteSavedTemplate('${t.id}', '${t.name.replace(/'/g, "\\'")}')">&times;</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function populateSavedSelect() {
+  const res = await fetch('/api/saved-templates');
+  const templates = await res.json();
+  const select = document.getElementById('saved-select');
+  select.innerHTML = '<option value="">-- Select a saved template --</option>';
+
+  templates.forEach(t => {
+    const stageLabel = t.stage === 'ready_to_send' ? ' [Ready to Send]' : ' [Fields Only]';
+    const opt = document.createElement('option');
+    opt.value = t.id;
+    opt.textContent = t.name + stageLabel;
+    select.appendChild(opt);
+  });
+
+  // Show info when selection changes
+  select.addEventListener('change', async () => {
+    const info = document.getElementById('saved-template-info');
+    if (!select.value) { info.textContent = ''; state.loadedSavedTemplate = null; return; }
+    const r = await fetch(`/api/saved-templates/${select.value}`);
+    const saved = await r.json();
+    state.loadedSavedTemplate = saved;
+
+    if (saved.stage === 'ready_to_send') {
+      info.textContent = `Ready to send: ${saved.fields.length} fields, sender pre-filled as ${saved.sender_name}. Just enter recipient info and click Prepare.`;
+      // Pre-fill sender fields
+      document.getElementById('sender-name').value = saved.sender_name || '';
+      document.getElementById('sender-email').value = saved.sender_email || '';
+      if (saved.doc_title) document.getElementById('doc-title').value = saved.doc_title;
+    } else {
+      info.textContent = `${saved.fields.length} fields placed. You'll fill in details and sign after loading.`;
+      if (saved.doc_title) document.getElementById('doc-title').value = saved.doc_title;
+    }
+  });
+}
+
+async function saveFieldsAsTemplate() {
+  if (state.fields.length === 0) {
+    showToast('Place some fields first');
+    return;
+  }
+
+  const name = prompt('Name this template (e.g. "Office Lease - 914 19th Ave"):');
+  if (!name) return;
+
+  const body = {
+    name,
+    stage: 'fields_placed',
+    templateName: state.templateName || null,
+    uploadedPdfPath: state.uploadedPath || state.savedPdfPath || null,
+    fields: state.fields,
+    docTitle: state.docInfo ? state.docInfo.title : '',
+    senderName: state.docInfo ? state.docInfo.senderName : null,
+    senderEmail: state.docInfo ? state.docInfo.senderEmail : null
+  };
+
+  const res = await fetch('/api/saved-templates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (res.ok) {
+    showToast('Template saved! You can reuse it from the dashboard.');
+  } else {
+    showToast('Failed to save template');
+  }
+}
+
+async function useSavedTemplate(id) {
+  const res = await fetch(`/api/saved-templates/${id}`);
+  const saved = await res.json();
+
+  // Switch to saved template source
+  document.getElementById('btn-saved').click();
+
+  // Set the select value
+  const select = document.getElementById('saved-select');
+  await populateSavedSelect();
+  select.value = id;
+  select.dispatchEvent(new Event('change'));
+
+  // Pre-fill form fields
+  if (saved.doc_title) document.getElementById('doc-title').value = saved.doc_title;
+  if (saved.sender_name) document.getElementById('sender-name').value = saved.sender_name;
+  if (saved.sender_email) document.getElementById('sender-email').value = saved.sender_email;
+
+  // Scroll to setup section
+  document.getElementById('step-setup').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function quickSend(saved, title, recipientName, recipientEmail) {
+  // For "ready_to_send" templates: create doc, auto-sign sender, send to recipient
+  const btn = document.getElementById('btn-prepare');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  try {
+    // Generate fresh field IDs
+    const fields = saved.fields.map(f => ({
+      ...f,
+      id: 'field_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
+    }));
+
+    // Remap sender field values to new IDs
+    const senderFieldValues = {};
+    if (saved.sender_field_values) {
+      const oldFields = saved.fields.filter(f => f.role === 'sender' && f.type !== 'signature');
+      oldFields.forEach((oldField, i) => {
+        const newField = fields.find((nf, j) => saved.fields[j] === oldField);
+        const idx = saved.fields.indexOf(oldField);
+        if (idx >= 0 && saved.sender_field_values[oldField.id]) {
+          senderFieldValues[fields[idx].id] = saved.sender_field_values[oldField.id];
+        }
+      });
+    }
+
+    // 1. Create the document
+    const docBody = {
+      title: title || saved.doc_title || 'Untitled',
+      templateName: saved.template_name || undefined,
+      savedTemplatePdf: saved.uploaded_pdf_path || undefined,
+      senderName: saved.sender_name,
+      senderEmail: saved.sender_email,
+      recipientName,
+      recipientEmail,
+      fields
+    };
+
+    const createRes = await fetch('/api/documents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(docBody)
+    });
+    const docData = await createRes.json();
+    if (!docData.id) throw new Error('Failed to create document');
+
+    // 2. Auto-sign as sender
+    const signRes = await fetch(`/api/documents/${docData.id}/sign-sender`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fieldValues: senderFieldValues,
+        signatureDataUrl: saved.sender_signature,
+        attestation: true
+      })
+    });
+    const signData = await signRes.json();
+
+    if (signData.success) {
+      showToast(`Document sent to ${recipientName}!`);
+      loadDocuments();
+      // Clear form
+      document.getElementById('recipient-name').value = '';
+      document.getElementById('recipient-email').value = '';
+    } else {
+      throw new Error(signData.error || 'Signing failed');
+    }
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Prepare Document';
+  }
+}
+
+async function deleteSavedTemplate(id, name) {
+  if (!confirm(`Delete saved template "${name}"?`)) return;
+  const res = await fetch(`/api/saved-templates/${id}`, { method: 'DELETE' });
+  if (res.ok) {
+    showToast('Template deleted');
+    loadSavedTemplates();
+  } else {
+    showToast('Failed to delete template');
   }
 }
 

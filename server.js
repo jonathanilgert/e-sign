@@ -56,6 +56,31 @@ db.exec(`
   )
 `);
 
+// Add template_name column to existing documents table (migration-safe)
+try { db.exec(`ALTER TABLE documents ADD COLUMN template_name TEXT`); } catch (e) { /* column already exists */ }
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS saved_templates (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    stage TEXT NOT NULL CHECK(stage IN ('fields_placed', 'ready_to_send')),
+    template_name TEXT,
+    uploaded_pdf_path TEXT,
+    fields TEXT DEFAULT '[]',
+    sender_name TEXT,
+    sender_email TEXT,
+    sender_field_values TEXT,
+    sender_signature TEXT,
+    doc_title TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  )
+`);
+
+// Ensure saved templates directory exists
+const savedTemplatesDir = path.join(__dirname, 'templates', 'saved');
+if (!fs.existsSync(savedTemplatesDir)) fs.mkdirSync(savedTemplatesDir, { recursive: true });
+
 // --------------- Middleware ---------------
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -202,9 +227,12 @@ app.get('/api/templates', (req, res) => {
   res.json(files.map(f => ({ name: f, path: `/api/templates/${encodeURIComponent(f)}` })));
 });
 
-// Serve template PDF
+// Serve template PDF (checks templates/ then templates/saved/)
 app.get('/api/templates/:name', (req, res) => {
-  const filePath = path.join(__dirname, 'templates', req.params.name);
+  let filePath = path.join(__dirname, 'templates', req.params.name);
+  if (!fs.existsSync(filePath)) {
+    filePath = path.join(__dirname, 'templates', 'saved', req.params.name);
+  }
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
   res.sendFile(filePath);
 });
@@ -219,14 +247,19 @@ app.post('/api/upload', upload.single('pdf'), (req, res) => {
 
 // Create a new document for signing
 app.post('/api/documents', (req, res) => {
-  const { title, pdfSource, templateName, senderName, senderEmail, recipientName, recipientEmail, fields } = req.body;
+  const { title, pdfSource, templateName, savedTemplatePdf, senderName, senderEmail, recipientName, recipientEmail, fields } = req.body;
   const id = uuidv4();
 
   let pdfPath;
   if (templateName) {
-    const src = path.join(__dirname, 'templates', templateName);
+    // Check templates/ first, then templates/saved/
+    let src = path.join(__dirname, 'templates', templateName);
+    if (!fs.existsSync(src)) src = path.join(__dirname, 'templates', 'saved', templateName);
     pdfPath = path.join(__dirname, 'uploads', `${id}.pdf`);
     fs.copyFileSync(src, pdfPath);
+  } else if (savedTemplatePdf) {
+    pdfPath = path.join(__dirname, 'uploads', `${id}.pdf`);
+    fs.copyFileSync(savedTemplatePdf, pdfPath);
   } else if (pdfSource) {
     pdfPath = pdfSource;
   } else {
@@ -234,9 +267,9 @@ app.post('/api/documents', (req, res) => {
   }
 
   db.prepare(`
-    INSERT INTO documents (id, title, pdf_path, sender_name, sender_email, recipient_name, recipient_email, fields)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, title || 'Untitled Document', pdfPath, senderName, senderEmail, recipientName, recipientEmail, JSON.stringify(fields || []));
+    INSERT INTO documents (id, title, pdf_path, sender_name, sender_email, recipient_name, recipient_email, fields, template_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, title || 'Untitled Document', pdfPath, senderName, senderEmail, recipientName, recipientEmail, JSON.stringify(fields || []), templateName || null);
 
   res.json({ id, url: `${BASE_URL}/sign/${id}?role=sender` });
 });
@@ -449,6 +482,95 @@ app.delete('/api/documents/:id', (req, res) => {
 app.get('/api/documents', (req, res) => {
   const docs = db.prepare('SELECT id, title, status, sender_name, recipient_name, created_at, sender_completed_at, recipient_completed_at FROM documents ORDER BY created_at DESC').all();
   res.json(docs);
+});
+
+// --------------- Saved Templates ---------------
+
+// List saved templates
+app.get('/api/saved-templates', (req, res) => {
+  const templates = db.prepare(
+    'SELECT id, name, stage, template_name, doc_title, created_at, updated_at FROM saved_templates ORDER BY updated_at DESC'
+  ).all();
+  res.json(templates);
+});
+
+// Get single saved template (full data)
+app.get('/api/saved-templates/:id', (req, res) => {
+  const t = db.prepare('SELECT * FROM saved_templates WHERE id = ?').get(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+  t.fields = JSON.parse(t.fields || '[]');
+  t.sender_field_values = t.sender_field_values ? JSON.parse(t.sender_field_values) : null;
+  res.json(t);
+});
+
+// Save a template
+app.post('/api/saved-templates', (req, res) => {
+  const { name, stage, templateName, uploadedPdfPath, fields, senderName, senderEmail, senderFieldValues, senderSignature, docTitle } = req.body;
+  const id = uuidv4();
+
+  // If using an uploaded PDF, copy it to templates/saved/ for persistence
+  let savedPdfPath = null;
+  if (uploadedPdfPath) {
+    savedPdfPath = path.join(savedTemplatesDir, `${id}.pdf`);
+    fs.copyFileSync(uploadedPdfPath, savedPdfPath);
+  }
+
+  db.prepare(`
+    INSERT INTO saved_templates (id, name, stage, template_name, uploaded_pdf_path, fields, sender_name, sender_email, sender_field_values, sender_signature, doc_title)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id, name, stage,
+    templateName || null,
+    savedPdfPath || null,
+    JSON.stringify(fields || []),
+    senderName || null, senderEmail || null,
+    senderFieldValues ? JSON.stringify(senderFieldValues) : null,
+    senderSignature || null,
+    docTitle || null
+  );
+
+  res.json({ id, name, stage });
+});
+
+// Update a saved template (e.g. upgrade Stage 1 to Stage 2)
+app.put('/api/saved-templates/:id', (req, res) => {
+  const t = db.prepare('SELECT * FROM saved_templates WHERE id = ?').get(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+
+  const { name, stage, senderName, senderEmail, senderFieldValues, senderSignature, docTitle, fields } = req.body;
+  db.prepare(`
+    UPDATE saved_templates SET
+      name = COALESCE(?, name),
+      stage = COALESCE(?, stage),
+      sender_name = COALESCE(?, sender_name),
+      sender_email = COALESCE(?, sender_email),
+      sender_field_values = COALESCE(?, sender_field_values),
+      sender_signature = COALESCE(?, sender_signature),
+      doc_title = COALESCE(?, doc_title),
+      fields = COALESCE(?, fields),
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).run(
+    name || null, stage || null,
+    senderName || null, senderEmail || null,
+    senderFieldValues ? JSON.stringify(senderFieldValues) : null,
+    senderSignature || null,
+    docTitle || null,
+    fields ? JSON.stringify(fields) : null,
+    req.params.id
+  );
+
+  res.json({ success: true });
+});
+
+// Delete a saved template
+app.delete('/api/saved-templates/:id', (req, res) => {
+  const t = db.prepare('SELECT * FROM saved_templates WHERE id = ?').get(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+
+  try { if (t.uploaded_pdf_path && fs.existsSync(t.uploaded_pdf_path)) fs.unlinkSync(t.uploaded_pdf_path); } catch (e) { /* ignore */ }
+  db.prepare('DELETE FROM saved_templates WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
 });
 
 // --------------- Page Routes ---------------

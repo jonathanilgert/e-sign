@@ -145,6 +145,16 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--success);
 }
 
+.btn-save-template {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #93c5fd;
+}
+
+.btn-save-template:hover {
+  background: #bfdbfe;
+}
+
 .source-toggle {
   display: flex;
   gap: 8px;
@@ -359,6 +369,8 @@ input:focus, select:focus, textarea:focus {
 .status-badge.draft { background: #f3f4f6; color: var(--muted); }
 .status-badge.awaiting { background: #fef3c7; color: #92400e; }
 .status-badge.completed { background: #d1fae5; color: #065f46; }
+.status-badge.fields-placed { background: #dbeafe; color: #1e40af; }
+.status-badge.ready-to-send { background: #d1fae5; color: #065f46; }
 
 .field-input-group {
   margin-bottom: 20px;
