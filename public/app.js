@@ -180,7 +180,7 @@ function setupFieldPlacement() {
     const typeLabels = { text: 'Text', name: 'Full Name', date: 'Date', initials: 'Initials', signature: 'Signature' };
     const label = customLabel || typeLabels[type];
 
-    const fieldW = type === 'signature' ? 180 : 150;
+    const fieldW = type === 'signature' ? 180 : 100;
     const fieldH = type === 'signature' ? 50 : 18;
 
     const clickX = e.clientX - rect.left;

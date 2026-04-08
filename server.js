@@ -119,7 +119,7 @@ async function sendEmail(to, subject, html, attachments = []) {
 
 // --------------- Helpers ---------------
 
-// Auto-fit text into a field: shrink font size until it fits within field.width
+// Auto-fit text into a field: shrink font size until it fits, return size + width
 function fitText(font, text, maxWidth, maxFontSize) {
   let size = maxFontSize;
   const minSize = 6;
@@ -128,7 +128,8 @@ function fitText(font, text, maxWidth, maxFontSize) {
     if (width <= maxWidth - 4) break; // 4pt padding
     size -= 0.5;
   }
-  return size;
+  const textWidth = font.widthOfTextAtSize(text, size);
+  return { size, textWidth };
 }
 
 // --------------- API Routes ---------------
@@ -231,12 +232,14 @@ app.post('/api/documents/:id/sign-sender', async (req, res) => {
         console.log('[SENDER SIGN] Drew signature at', field.x, field.y);
       } else if (fieldValues[field.id]) {
         const maxSize = field.fontSize || 11;
-        const fittedSize = fitText(font, fieldValues[field.id], field.width, maxSize);
+        const { size: fittedSize, textWidth } = fitText(font, fieldValues[field.id], field.width, maxSize);
+        // Center text horizontally within the field so it appears near where the user clicked
+        const textX = field.x + (field.width - textWidth) / 2;
         page.drawText(fieldValues[field.id], {
-          x: field.x + 2, y: field.y + 4,
+          x: textX, y: field.y + 4,
           size: fittedSize, font, color: rgb(0, 0, 0.4)
         });
-        console.log('[SENDER SIGN] Drew text "' + fieldValues[field.id] + '" at', field.x, field.y, 'size:', fittedSize);
+        console.log('[SENDER SIGN] Drew text "' + fieldValues[field.id] + '" at', textX, field.y, 'size:', fittedSize);
       }
     }
 
@@ -316,12 +319,14 @@ app.post('/api/documents/:id/sign-recipient', async (req, res) => {
         console.log('[RECIPIENT SIGN] Drew signature at', field.x, field.y);
       } else if (fieldValues[field.id]) {
         const maxSize = field.fontSize || 11;
-        const fittedSize = fitText(font, fieldValues[field.id], field.width, maxSize);
+        const { size: fittedSize, textWidth } = fitText(font, fieldValues[field.id], field.width, maxSize);
+        // Center text horizontally within the field so it appears near where the user clicked
+        const textX = field.x + (field.width - textWidth) / 2;
         page.drawText(fieldValues[field.id], {
-          x: field.x + 2, y: field.y + 4,
+          x: textX, y: field.y + 4,
           size: fittedSize, font, color: rgb(0, 0, 0.4)
         });
-        console.log('[RECIPIENT SIGN] Drew text "' + fieldValues[field.id] + '" at', field.x, field.y, 'size:', fittedSize);
+        console.log('[RECIPIENT SIGN] Drew text "' + fieldValues[field.id] + '" at', textX, field.y, 'size:', fittedSize);
       }
     }
 
