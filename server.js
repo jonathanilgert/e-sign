@@ -1697,7 +1697,9 @@ app.get('/dashboard', (req, res) => {
 app.get('/', (req, res) => {
   // Landing page is a self-unpacking bundle that needs permissive CSP
   // (creates blob: URLs for scripts and data: URLs for fonts at runtime)
-  res.setHeader('Content-Security-Policy', "default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob: https://fonts.gstatic.com; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com");
+  // Landing page is a self-unpacking bundle that creates blob: URLs for scripts,
+  // data: URLs for fonts, and uses eval via Babel. Strip all restrictive CSP.
+  res.setHeader('Content-Security-Policy', '');
   res.sendFile(path.join(__dirname, 'public', 'landing.html'));
 });
 
