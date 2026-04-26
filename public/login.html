@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In - E-Sign</title>
+  <link rel="stylesheet" href="/style.css?v=5">
+  <style>
+    .auth-container {
+      max-width: 420px;
+      margin: 60px auto;
+      padding: 0 20px;
+    }
+    .auth-card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 36px;
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    }
+    .auth-card h2 {
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    .auth-subtitle {
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 28px;
+    }
+    .auth-card .form-group { margin-bottom: 18px; }
+    .auth-card label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 5px;
+      color: var(--text);
+    }
+    .auth-card input[type="text"],
+    .auth-card input[type="email"],
+    .auth-card input[type="password"] {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+    .auth-card input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(67,97,238,0.1);
+    }
+    .auth-btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+      margin-top: 8px;
+    }
+    .auth-btn:hover { background: var(--accent-hover); }
+    .auth-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .auth-toggle {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .auth-toggle a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .auth-toggle a:hover { text-decoration: underline; }
+    .auth-error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .auth-success {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #16a34a;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .forgot-link {
+      display: block;
+      text-align: right;
+      font-size: 13px;
+      color: var(--accent);
+      text-decoration: none;
+      margin-top: -10px;
+      margin-bottom: 16px;
+      cursor: pointer;
+    }
+    .forgot-link:hover { text-decoration: underline; }
+    .auth-logo {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .auth-logo .logo {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--primary);
+      letter-spacing: -0.5px;
+    }
+    .auth-logo .tagline {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .password-hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body style="background:var(--bg)">
+  <div class="auth-container">
+    <div class="auth-logo">
+      <div class="logo">E-Sign</div>
+      <p class="tagline">Simple document signing</p>
+    </div>
+
+    <!-- Login Form -->
+    <div id="login-form" class="auth-card">
+      <h2>Welcome back</h2>
+      <p class="auth-subtitle">Sign in to your account</p>
+      <div id="login-error" class="auth-error"></div>
+      <div id="login-success" class="auth-success"></div>
+      <div class="form-group">
+        <label for="login-email">Email</label>
+        <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password">
+      </div>
+      <a class="forgot-link" id="show-forgot">Forgot password?</a>
+      <button class="auth-btn" id="btn-login">Sign In</button>
+      <div class="auth-toggle">
+        Don't have an account? <a id="show-register">Create one</a>
+      </div>
+    </div>
+
+    <!-- Register Form -->
+    <div id="register-form" class="auth-card" style="display:none">
+      <h2>Create account</h2>
+      <p class="auth-subtitle">Get started with E-Sign</p>
+      <div id="register-error" class="auth-error"></div>
+      <div class="form-group">
+        <label for="register-name">Full Name</label>
+        <input type="text" id="register-name" placeholder="Your full name" autocomplete="name">
+      </div>
+      <div class="form-group">
+        <label for="register-email">Email</label>
+        <input type="email" id="register-email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="register-password">Password</label>
+        <input type="password" id="register-password" placeholder="Create a password" autocomplete="new-password">
+        <p class="password-hint">Must be at least 8 characters</p>
+      </div>
+      <button class="auth-btn" id="btn-register">Create Account</button>
+      <div class="auth-toggle">
+        Already have an account? <a id="show-login">Sign in</a>
+      </div>
+    </div>
+
+    <!-- Forgot Password Form -->
+    <div id="forgot-form" class="auth-card" style="display:none">
+      <h2>Reset password</h2>
+      <p class="auth-subtitle">We'll send you a reset link</p>
+      <div id="forgot-error" class="auth-error"></div>
+      <div id="forgot-success" class="auth-success"></div>
+      <div class="form-group">
+        <label for="forgot-email">Email</label>
+        <input type="email" id="forgot-email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <button class="auth-btn" id="btn-forgot">Send Reset Link</button>
+      <div class="auth-toggle">
+        <a id="show-login-from-forgot">Back to sign in</a>
+      </div>
+    </div>
+
+    <!-- Reset Password Form -->
+    <div id="reset-form" class="auth-card" style="display:none">
+      <h2>Set new password</h2>
+      <p class="auth-subtitle">Enter your new password</p>
+      <div id="reset-error" class="auth-error"></div>
+      <div id="reset-success" class="auth-success"></div>
+      <div class="form-group">
+        <label for="reset-password">New Password</label>
+        <input type="password" id="reset-password" placeholder="Enter new password" autocomplete="new-password">
+        <p class="password-hint">Must be at least 8 characters</p>
+      </div>
+      <div class="form-group">
+        <label for="reset-password-confirm">Confirm Password</label>
+        <input type="password" id="reset-password-confirm" placeholder="Confirm new password" autocomplete="new-password">
+      </div>
+      <button class="auth-btn" id="btn-reset">Reset Password</button>
+      <div class="auth-toggle">
+        <a id="show-login-from-reset">Back to sign in</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // CSRF helper for login page
+    let _loginCsrf = null;
+    async function getCsrf() {
+      if (_loginCsrf) return _loginCsrf;
+      try {
+        const r = await fetch('/api/csrf-token');
+        const d = await r.json();
+        _loginCsrf = d.token;
+      } catch (e) {}
+      return _loginCsrf || '';
+    }
+
+    // If already logged in, redirect to dashboard
+    if (localStorage.getItem('esign_token')) {
+      fetch('/api/auth/me', {
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('esign_token') }
+      }).then(r => {
+        if (r.ok) window.location.replace('/dashboard');
+      });
+    }
+
+    // Pre-fetch CSRF token
+    getCsrf();
+
+    // Check for reset token in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const resetToken = urlParams.get('reset');
+    if (resetToken) {
+      showForm('reset');
+    }
+
+    // Show register form if arriving from /register
+    if (window.location.pathname === '/register') {
+      showForm('register');
+    }
+
+    // Form switching
+    function showForm(name) {
+      ['login-form', 'register-form', 'forgot-form', 'reset-form'].forEach(id => {
+        document.getElementById(id).style.display = 'none';
+      });
+      document.getElementById(name + '-form').style.display = '';
+    }
+
+    document.getElementById('show-register').addEventListener('click', () => showForm('register'));
+    document.getElementById('show-login').addEventListener('click', () => showForm('login'));
+    document.getElementById('show-forgot').addEventListener('click', () => showForm('forgot'));
+    document.getElementById('show-login-from-forgot').addEventListener('click', () => showForm('login'));
+    document.getElementById('show-login-from-reset').addEventListener('click', () => showForm('login'));
+
+    function showError(elementId, msg) {
+      const el = document.getElementById(elementId);
+      el.textContent = msg;
+      el.style.display = msg ? '' : 'none';
+    }
+
+    function showSuccess(elementId, msg) {
+      const el = document.getElementById(elementId);
+      el.textContent = msg;
+      el.style.display = msg ? '' : 'none';
+    }
+
+    // Login
+    document.getElementById('btn-login').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-login');
+      showError('login-error', '');
+      const email = document.getElementById('login-email').value.trim();
+      const password = document.getElementById('login-password').value;
+
+      if (!email || !password) {
+        showError('login-error', 'Please enter email and password');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Signing in...';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': await getCsrf() },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showError('login-error', data.error);
+          btn.disabled = false;
+          btn.textContent = 'Sign In';
+          return;
+        }
+        localStorage.setItem('esign_token', data.token);
+        localStorage.setItem('esign_user', JSON.stringify(data.user));
+        window.location.replace('/dashboard');
+      } catch (e) {
+        showError('login-error', 'Network error. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    });
+
+    // Register
+    document.getElementById('btn-register').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-register');
+      showError('register-error', '');
+      const name = document.getElementById('register-name').value.trim();
+      const email = document.getElementById('register-email').value.trim();
+      const password = document.getElementById('register-password').value;
+
+      if (!name || !email || !password) {
+        showError('register-error', 'All fields are required');
+        return;
+      }
+      if (password.length < 8) {
+        showError('register-error', 'Password must be at least 8 characters');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Creating account...';
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': await getCsrf() },
+          body: JSON.stringify({ name, email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showError('register-error', data.error);
+          btn.disabled = false;
+          btn.textContent = 'Create Account';
+          return;
+        }
+        localStorage.setItem('esign_token', data.token);
+        localStorage.setItem('esign_user', JSON.stringify(data.user));
+        window.location.replace('/dashboard');
+      } catch (e) {
+        showError('register-error', 'Network error. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Create Account';
+      }
+    });
+
+    // Forgot password
+    document.getElementById('btn-forgot').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-forgot');
+      showError('forgot-error', '');
+      showSuccess('forgot-success', '');
+      const email = document.getElementById('forgot-email').value.trim();
+
+      if (!email) {
+        showError('forgot-error', 'Please enter your email');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      try {
+        const res = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': await getCsrf() },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showError('forgot-error', data.error);
+        } else {
+          showSuccess('forgot-success', 'If that email exists, a reset link has been sent. Check your inbox.');
+        }
+      } catch (e) {
+        showError('forgot-error', 'Network error. Please try again.');
+      }
+      btn.disabled = false;
+      btn.textContent = 'Send Reset Link';
+    });
+
+    // Reset password
+    document.getElementById('btn-reset').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-reset');
+      showError('reset-error', '');
+      showSuccess('reset-success', '');
+      const password = document.getElementById('reset-password').value;
+      const confirm = document.getElementById('reset-password-confirm').value;
+
+      if (!password || !confirm) {
+        showError('reset-error', 'Please fill in both fields');
+        return;
+      }
+      if (password !== confirm) {
+        showError('reset-error', 'Passwords do not match');
+        return;
+      }
+      if (password.length < 8) {
+        showError('reset-error', 'Password must be at least 8 characters');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Resetting...';
+
+      try {
+        const res = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': await getCsrf() },
+          body: JSON.stringify({ token: resetToken, password })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showError('reset-error', data.error);
+          btn.disabled = false;
+          btn.textContent = 'Reset Password';
+        } else {
+          showSuccess('reset-success', 'Password reset! Redirecting to sign in...');
+          btn.disabled = true;
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 2000);
+        }
+      } catch (e) {
+        showError('reset-error', 'Network error. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Reset Password';
+      }
+    });
+
+    // Enter key support
+    document.getElementById('login-password').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btn-login').click();
+    });
+    document.getElementById('register-password').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btn-register').click();
+    });
+    document.getElementById('forgot-email').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btn-forgot').click();
+    });
+    document.getElementById('reset-password-confirm').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btn-reset').click();
+    });
+  </script>
+</body>
+</html>

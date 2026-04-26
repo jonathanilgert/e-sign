@@ -4,153 +4,219 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>E-Sign</title>
-  <link rel="stylesheet" href="/style.css?v=4">
+  <link rel="stylesheet" href="/style.css?v=7">
 </head>
 <body>
-  <header>
-    <div class="logo">E-Sign</div>
-    <p class="tagline">Simple document signing</p>
-  </header>
+  <!-- Top nav -->
+  <nav class="top-nav">
+    <div class="nav-inner">
+      <a href="/dashboard" class="nav-logo">E-Sign</a>
+      <div class="nav-right">
+        <span class="plan-badge" id="nav-plan-badge"></span>
+        <div class="nav-user" id="nav-user">
+          <button class="nav-user-btn" id="nav-user-btn">
+            <span class="nav-avatar" id="nav-avatar"></span>
+            <span class="nav-user-name" id="nav-user-name"></span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="margin-left:4px;opacity:0.5"><path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="nav-dropdown" id="nav-dropdown">
+            <a href="#" class="nav-dropdown-item" id="menu-settings">Settings</a>
+            <a href="#" class="nav-dropdown-item" id="menu-billing">Billing</a>
+            <div class="nav-dropdown-divider"></div>
+            <a href="#" class="nav-dropdown-item nav-dropdown-danger" id="menu-logout">Sign out</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
 
   <main>
-    <!-- Step 1: Choose document -->
-    <section id="step-setup" class="card">
-      <h2>New Document</h2>
-
-      <div class="form-group">
-        <label>Document Source</label>
-        <div class="source-toggle">
-          <button class="btn btn-sm active" id="btn-template">Use Template</button>
-          <button class="btn btn-sm" id="btn-upload">Upload PDF</button>
-          <button class="btn btn-sm" id="btn-saved">Saved Template</button>
+    <!-- ===== Dashboard View ===== -->
+    <div id="view-dashboard">
+      <!-- Stats row -->
+      <div class="stats-row" id="stats-row">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-sent">-</div>
+          <div class="stat-label">Sent this month</div>
+        </div>
+        <div class="stat-card stat-awaiting">
+          <div class="stat-value" id="stat-awaiting">-</div>
+          <div class="stat-label">Awaiting signature</div>
+        </div>
+        <div class="stat-card stat-completed">
+          <div class="stat-value" id="stat-completed">-</div>
+          <div class="stat-label">Completed</div>
         </div>
       </div>
 
-      <div id="template-section">
-        <div class="form-group">
-          <label for="template-select">Template</label>
-          <select id="template-select"></select>
+      <!-- Documents section -->
+      <section class="card">
+        <div class="section-header">
+          <h2>Documents</h2>
+          <button class="btn btn-primary" id="btn-new-doc" style="margin-top:0">+ New Document</button>
         </div>
-      </div>
 
-      <div id="upload-section" style="display:none">
-        <div class="form-group">
-          <label for="pdf-upload">Upload PDF</label>
-          <input type="file" id="pdf-upload" accept=".pdf">
-        </div>
-      </div>
-
-      <div id="saved-section" style="display:none">
-        <div class="form-group">
-          <label for="saved-select">Saved Template</label>
-          <select id="saved-select">
-            <option value="">-- Select a saved template --</option>
+        <!-- Search & filter bar -->
+        <div class="filter-bar">
+          <input type="text" id="doc-search" placeholder="Search by title or recipient..." class="filter-search">
+          <select id="doc-status-filter" class="filter-select">
+            <option value="all">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="awaiting_recipient">Awaiting signature</option>
+            <option value="completed">Completed</option>
+            <option value="expired">Expired</option>
           </select>
-          <p id="saved-template-info" class="hint" style="margin-top:6px"></p>
+          <select id="doc-sort" class="filter-select">
+            <option value="date-desc">Newest first</option>
+            <option value="date-asc">Oldest first</option>
+            <option value="status">By status</option>
+          </select>
         </div>
+
+        <div id="documents-table"></div>
+      </section>
+
+      <!-- Saved templates section -->
+      <section class="card">
+        <div class="section-header">
+          <h2>Saved Templates</h2>
+        </div>
+        <div id="saved-templates-list"></div>
+      </section>
+    </div>
+
+    <!-- ===== New Document View (creation flow) ===== -->
+    <div id="view-create" style="display:none">
+      <div style="margin-bottom:16px">
+        <button class="btn btn-sm" id="btn-back-dashboard">&larr; Back to Dashboard</button>
       </div>
 
-      <div class="form-group">
-        <label for="doc-title">Document Title</label>
-        <input type="text" id="doc-title" placeholder="e.g. Residential Tenancy Agreement - 123 Main St">
-      </div>
+      <!-- Step 1: Choose document -->
+      <section id="step-setup" class="card">
+        <h2>New Document</h2>
 
-      <div class="form-row">
         <div class="form-group">
-          <label for="sender-name">Your Name</label>
-          <input type="text" id="sender-name" placeholder="Full legal name">
-        </div>
-        <div class="form-group">
-          <label for="sender-email">Your Email</label>
-          <input type="email" id="sender-email" placeholder="you@example.com">
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="recipient-name">Recipient Name</label>
-          <input type="text" id="recipient-name" placeholder="Tenant's full legal name">
-        </div>
-        <div class="form-group">
-          <label for="recipient-email">Recipient Email</label>
-          <input type="email" id="recipient-email" placeholder="tenant@example.com">
-        </div>
-      </div>
-
-      <button class="btn btn-primary" id="btn-prepare">Prepare Document</button>
-    </section>
-
-    <!-- Step 2: Place fields on PDF -->
-    <section id="step-fields" class="card" style="display:none">
-      <h2>Place Fields on Document</h2>
-      <p class="hint">Click on the PDF to place fields where each party needs to fill in information or sign.</p>
-
-      <div class="pdf-workspace">
-        <div style="flex:1;min-width:0">
-          <div id="pdf-container"></div>
-          <div class="page-nav">
-            <button class="btn btn-sm" id="btn-prev-page">Previous</button>
-            <span id="page-indicator">Page 1 of 1</span>
-            <button class="btn btn-sm" id="btn-next-page">Next</button>
+          <label>Document Source</label>
+          <div class="source-toggle">
+            <button class="btn btn-sm active" id="btn-template">Use Template</button>
+            <button class="btn btn-sm" id="btn-upload">Upload PDF</button>
+            <button class="btn btn-sm" id="btn-saved">Saved Template</button>
           </div>
         </div>
 
-        <div class="toolbar-sidebar">
-          <h3>Field Tools</h3>
-          <div class="tool-group">
-            <label>Assign to</label>
-            <select id="field-role">
-              <option value="sender">You (Sender)</option>
-              <option value="recipient">Recipient</option>
+        <div id="template-section">
+          <div class="form-group">
+            <label for="template-select">Template</label>
+            <select id="template-select"></select>
+          </div>
+        </div>
+
+        <div id="upload-section" style="display:none">
+          <div class="form-group">
+            <label for="pdf-upload">Upload PDF</label>
+            <input type="file" id="pdf-upload" accept=".pdf">
+          </div>
+        </div>
+
+        <div id="saved-section" style="display:none">
+          <div class="form-group">
+            <label for="saved-select">Saved Template</label>
+            <select id="saved-select">
+              <option value="">-- Select a saved template --</option>
             </select>
-          </div>
-          <div class="tool-group">
-            <label>Field type</label>
-            <select id="field-type">
-              <option value="text">Text Field</option>
-              <option value="name">Full Name</option>
-              <option value="date">Date</option>
-              <option value="initials">Initials</option>
-              <option value="signature">Signature</option>
-            </select>
-          </div>
-          <div class="tool-group">
-            <label>Label</label>
-            <input type="text" id="field-label" placeholder="e.g. Move-in date">
-          </div>
-          <button class="btn btn-sm btn-danger" id="btn-undo">Remove Last</button>
-          <button class="btn btn-sm btn-save-template" id="btn-save-template">Save as Template</button>
-          <div class="color-legend">
-            <div class="legend-item"><span class="legend-dot sender"></span> Your fields</div>
-            <div class="legend-item"><span class="legend-dot recipient"></span> Their fields</div>
+            <p id="saved-template-info" class="hint" style="margin-top:6px"></p>
           </div>
         </div>
-      </div>
 
-      <div id="field-summary"></div>
+        <div class="form-group">
+          <label for="doc-title">Document Title</label>
+          <input type="text" id="doc-title" placeholder="e.g. Residential Tenancy Agreement - 123 Main St">
+        </div>
 
-      <button class="btn btn-primary" id="btn-done-fields">Continue to Sign</button>
-    </section>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="sender-name">Your Name</label>
+            <input type="text" id="sender-name" placeholder="Full legal name">
+          </div>
+          <div class="form-group">
+            <label for="sender-email">Your Email</label>
+            <input type="email" id="sender-email" placeholder="you@example.com">
+          </div>
+        </div>
 
-    <!-- Saved templates list -->
-    <section id="saved-templates-section" class="card">
-      <h2>Saved Templates</h2>
-      <div id="saved-templates-list"></div>
-    </section>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="recipient-name">Recipient Name</label>
+            <input type="text" id="recipient-name" placeholder="Tenant's full legal name">
+          </div>
+          <div class="form-group">
+            <label for="recipient-email">Recipient Email</label>
+            <input type="email" id="recipient-email" placeholder="tenant@example.com">
+          </div>
+        </div>
 
-    <!-- Document list -->
-    <section id="doc-list" class="card">
-      <h2>Recent Documents</h2>
-      <div id="documents-table"></div>
-    </section>
+        <button class="btn btn-primary" id="btn-prepare">Prepare Document</button>
+      </section>
+
+      <!-- Step 2: Place fields on PDF -->
+      <section id="step-fields" class="card" style="display:none">
+        <h2>Place Fields on Document</h2>
+        <p class="hint">Click on the PDF to place fields where each party needs to fill in information or sign.</p>
+
+        <div class="pdf-workspace">
+          <div style="flex:1;min-width:0">
+            <div id="pdf-container"></div>
+            <div class="page-nav">
+              <button class="btn btn-sm" id="btn-prev-page">Previous</button>
+              <span id="page-indicator">Page 1 of 1</span>
+              <button class="btn btn-sm" id="btn-next-page">Next</button>
+            </div>
+          </div>
+
+          <div class="toolbar-sidebar">
+            <h3>Field Tools</h3>
+            <div class="tool-group">
+              <label>Assign to</label>
+              <select id="field-role">
+                <option value="sender">You (Sender)</option>
+                <option value="recipient">Recipient</option>
+              </select>
+            </div>
+            <div class="tool-group">
+              <label>Field type</label>
+              <select id="field-type">
+                <option value="text">Text Field</option>
+                <option value="name">Full Name</option>
+                <option value="date">Date</option>
+                <option value="initials">Initials</option>
+                <option value="signature">Signature</option>
+              </select>
+            </div>
+            <div class="tool-group">
+              <label>Label</label>
+              <input type="text" id="field-label" placeholder="e.g. Move-in date">
+            </div>
+            <button class="btn btn-sm btn-danger" id="btn-undo">Remove Last</button>
+            <button class="btn btn-sm btn-save-template" id="btn-save-template">Save as Template</button>
+            <div class="color-legend">
+              <div class="legend-item"><span class="legend-dot sender"></span> Your fields</div>
+              <div class="legend-item"><span class="legend-dot recipient"></span> Their fields</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="field-summary"></div>
+
+        <button class="btn btn-primary" id="btn-done-fields">Continue to Sign</button>
+      </section>
+    </div>
   </main>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   </script>
-  <!-- Round target cursor -->
   <div class="target-cursor" id="target-cursor"></div>
-  <script src="/app.js?v=4"></script>
+  <script src="/app.js?v=7"></script>
 </body>
 </html>

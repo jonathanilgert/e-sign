@@ -63,7 +63,7 @@
         <h2>Document Fully Executed</h2>
         <p id="completed-message" style="color:var(--muted);margin-bottom:20px"></p>
         <a id="download-link" class="btn btn-success" download>Download Signed PDF</a>
-        <a href="/" class="btn" style="margin-left:8px">Back to Dashboard</a>
+        <a href="/dashboard" class="btn" style="margin-left:8px">Back to Dashboard</a>
       </div>
     </section>
 
@@ -73,7 +73,7 @@
         <div class="checkmark" style="font-size:48px">&#9993;</div>
         <h2 style="color:var(--accent)">Document Sent for Signing</h2>
         <p id="waiting-message" style="color:var(--muted);margin-bottom:20px"></p>
-        <a href="/" class="btn">Back to Dashboard</a>
+        <a href="/dashboard" class="btn">Back to Dashboard</a>
       </div>
     </section>
   </main>
@@ -83,6 +83,20 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   </script>
   <script>
+    // Auth + CSRF helper for signing page
+    let _signCsrf = null;
+    async function getSignCsrf() {
+      if (_signCsrf) return _signCsrf;
+      try { const r = await fetch('/api/csrf-token'); _signCsrf = (await r.json()).token; } catch (e) {}
+      return _signCsrf || '';
+    }
+    function getAuthHeaders() {
+      const token = localStorage.getItem('esign_token');
+      const h = token ? { 'Authorization': 'Bearer ' + token } : {};
+      if (_signCsrf) h['X-CSRF-Token'] = _signCsrf;
+      return h;
+    }
+
     // ============== Signing Page ==============
     const docId = window.location.pathname.split('/').pop();
     const urlParams = new URLSearchParams(window.location.search);
@@ -114,6 +128,11 @@
       document.getElementById('doc-title').textContent = doc.title;
 
       // Handle different states
+      if (doc.status === 'expired') {
+        showExpiredState();
+        return;
+      }
+
       if (doc.status === 'completed') {
         showCompletedState();
         return;
@@ -420,9 +439,10 @@
 
       try {
         const endpoint = role === 'sender' ? 'sign-sender' : 'sign-recipient';
+        const csrf = await getSignCsrf();
         const res = await fetch(`/api/documents/${docId}/${endpoint}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
           body: JSON.stringify({ fieldValues, signatureDataUrl, attestation: true })
         });
 
@@ -436,7 +456,7 @@
               if (templateName) {
                 await fetch('/api/saved-templates', {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
                   body: JSON.stringify({
                     name: templateName,
                     stage: 'ready_to_send',
@@ -468,6 +488,18 @@
     }
 
     // --------------- States ---------------
+    function showExpiredState() {
+      document.getElementById('sign-section').style.display = 'none';
+      document.getElementById('completed-section').style.display = '';
+      document.querySelector('#completed-section .checkmark').textContent = '\u23F0';
+      document.querySelector('#completed-section .checkmark').style.color = '#dc2626';
+      document.querySelector('#completed-section h2').textContent = 'Document Expired';
+      document.querySelector('#completed-section h2').style.color = '#dc2626';
+      document.getElementById('completed-message').textContent =
+        'This document has expired and can no longer be signed. Please contact the sender to request a new document.';
+      document.getElementById('download-link').style.display = 'none';
+    }
+
     function showWaitingState() {
       document.getElementById('sign-section').style.display = 'none';
       document.getElementById('waiting-section').style.display = '';

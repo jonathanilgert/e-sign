@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings - E-Sign</title>
+  <link rel="stylesheet" href="/style.css?v=7">
+  <style>
+    .settings-layout {
+      max-width: 720px;
+      margin: 24px auto;
+      padding: 0 20px;
+    }
+    .settings-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+    .settings-back:hover { color: var(--text); }
+    .settings-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 24px;
+    }
+    .settings-section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 28px;
+      margin-bottom: 20px;
+    }
+    .settings-section h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .settings-section .section-desc {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+    .s-form-group {
+      margin-bottom: 16px;
+    }
+    .s-form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 5px;
+      color: var(--text);
+    }
+    .s-form-group input[type="text"],
+    .s-form-group input[type="email"],
+    .s-form-group input[type="password"] {
+      width: 100%;
+      padding: 9px 13px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .s-form-group input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(67,97,238,0.1);
+    }
+    .s-form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .s-btn {
+      padding: 9px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .s-btn:hover { background: var(--bg); }
+    .s-btn-primary {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+    .s-btn-primary:hover { background: var(--accent-hover); }
+    .s-btn-danger {
+      background: white;
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+    .s-btn-danger:hover { background: #fef2f2; }
+    .s-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .s-msg {
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .s-msg.error { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .s-msg.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+    .s-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    /* Toggle switch */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-label {
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .toggle-desc {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: #d1d5db;
+      border-radius: 12px;
+      transition: 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      left: 3px;
+      bottom: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-slider {
+      background: var(--accent);
+    }
+    .toggle-switch input:checked + .toggle-slider::before {
+      transform: translateX(20px);
+    }
+
+    /* Logo upload */
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 16px;
+    }
+    .logo-preview {
+      width: 80px;
+      height: 80px;
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+      background: var(--bg);
+    }
+    .logo-preview img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    .logo-preview .placeholder-text {
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+      padding: 4px;
+    }
+    .logo-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .logo-actions input[type="file"] { display: none; }
+
+    /* Plan display */
+    .plan-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+      margin-bottom: 16px;
+    }
+    .plan-name {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .plan-detail {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Delete modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 440px;
+      width: 90%;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.15);
+    }
+    .modal-box h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+      color: var(--danger);
+    }
+    .modal-box p {
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+    .member-since {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .s-form-row { grid-template-columns: 1fr; }
+      .logo-area { flex-direction: column; align-items: flex-start; }
+      .plan-card { flex-direction: column; align-items: flex-start; gap: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Top nav (same as dashboard) -->
+  <nav class="top-nav">
+    <div class="nav-inner">
+      <a href="/dashboard" class="nav-logo">E-Sign</a>
+      <div class="nav-right">
+        <span class="plan-badge" id="nav-plan-badge"></span>
+        <div class="nav-user" id="nav-user">
+          <button class="nav-user-btn" id="nav-user-btn">
+            <span class="nav-avatar" id="nav-avatar"></span>
+            <span class="nav-user-name" id="nav-user-name"></span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="margin-left:4px;opacity:0.5"><path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="nav-dropdown" id="nav-dropdown">
+            <a href="/settings" class="nav-dropdown-item">Settings</a>
+            <a href="/settings#account" class="nav-dropdown-item">Billing</a>
+            <div class="nav-dropdown-divider"></div>
+            <a href="#" class="nav-dropdown-item nav-dropdown-danger" id="menu-logout">Sign out</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="settings-layout">
+    <a href="/dashboard" class="settings-back">&larr; Back to Dashboard</a>
+    <h1 class="settings-title">Settings</h1>
+
+    <!-- ===== Profile ===== -->
+    <section class="settings-section" id="profile">
+      <h3>Profile</h3>
+      <p class="section-desc">Your personal information used when sending documents.</p>
+      <div id="profile-msg" class="s-msg"></div>
+      <div class="s-form-row">
+        <div class="s-form-group">
+          <label for="profile-name">Full Name</label>
+          <input type="text" id="profile-name">
+        </div>
+        <div class="s-form-group">
+          <label for="profile-email">Email Address</label>
+          <input type="email" id="profile-email">
+        </div>
+      </div>
+      <div class="s-actions">
+        <button class="s-btn s-btn-primary" id="btn-save-profile">Save Changes</button>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:24px 0 20px">
+
+      <h3>Change Password</h3>
+      <p class="section-desc">Update your account password.</p>
+      <div id="password-msg" class="s-msg"></div>
+      <div class="s-form-group">
+        <label for="pw-current">Current Password</label>
+        <input type="password" id="pw-current" autocomplete="current-password">
+      </div>
+      <div class="s-form-row">
+        <div class="s-form-group">
+          <label for="pw-new">New Password</label>
+          <input type="password" id="pw-new" autocomplete="new-password">
+        </div>
+        <div class="s-form-group">
+          <label for="pw-confirm">Confirm New Password</label>
+          <input type="password" id="pw-confirm" autocomplete="new-password">
+        </div>
+      </div>
+      <div class="s-actions">
+        <button class="s-btn s-btn-primary" id="btn-change-pw">Change Password</button>
+      </div>
+    </section>
+
+    <!-- ===== Notifications ===== -->
+    <section class="settings-section" id="notifications">
+      <h3>Notifications</h3>
+      <p class="section-desc">Control which email notifications you receive.</p>
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Document signed</div>
+          <div class="toggle-desc">Get notified when a recipient signs your document.</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="notify-signed" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Document expired</div>
+          <div class="toggle-desc">Get notified when a document expires unsigned.</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="notify-expired" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </section>
+
+    <!-- ===== Branding ===== -->
+    <section class="settings-section" id="branding">
+      <h3>Branding</h3>
+      <p class="section-desc">Customize how your documents appear to recipients. Logo support coming soon.</p>
+      <div id="branding-msg" class="s-msg"></div>
+      <div class="logo-area">
+        <div class="logo-preview" id="logo-preview">
+          <span class="placeholder-text">No logo</span>
+        </div>
+        <div class="logo-actions">
+          <button class="s-btn" id="btn-upload-logo">Upload Logo</button>
+          <button class="s-btn s-btn-danger" id="btn-remove-logo" style="display:none">Remove</button>
+          <input type="file" id="logo-input" accept="image/png,image/jpeg,image/svg+xml,image/webp">
+          <span style="font-size:12px;color:var(--muted)">PNG, JPG, SVG, or WebP. Max 2 MB.</span>
+        </div>
+      </div>
+      <div class="s-form-group">
+        <label for="company-name">Company Name</label>
+        <input type="text" id="company-name" placeholder="e.g. M1 Group Inc.">
+      </div>
+      <div class="s-actions">
+        <button class="s-btn s-btn-primary" id="btn-save-branding">Save Branding</button>
+      </div>
+    </section>
+
+    <!-- ===== Account ===== -->
+    <section class="settings-section" id="account">
+      <h3>Account</h3>
+      <p class="section-desc">Manage your plan and account.</p>
+      <div class="plan-card">
+        <div>
+          <div class="plan-name" id="plan-name">Free</div>
+          <div class="plan-detail" id="plan-detail">3 documents per month</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="s-btn s-btn-primary" id="btn-upgrade" style="display:none">Upgrade to Unlimited</button>
+          <button class="s-btn" id="btn-manage-billing" style="display:none">Manage Billing</button>
+        </div>
+      </div>
+      <div id="billing-history-section" style="display:none;margin-top:20px">
+        <h4 style="font-size:14px;font-weight:600;margin-bottom:12px">Billing History</h4>
+        <div id="billing-history-list"></div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
+
+      <h3 style="color:var(--danger)">Danger Zone</h3>
+      <p class="section-desc">Permanently delete your account and all associated data. This cannot be undone.</p>
+      <button class="s-btn s-btn-danger" id="btn-delete-account">Delete Account</button>
+      <p class="member-since" id="member-since"></p>
+    </section>
+  </div>
+
+  <!-- Delete confirmation modal -->
+  <div class="modal-overlay" id="delete-modal">
+    <div class="modal-box">
+      <h3>Delete your account?</h3>
+      <p>This will permanently delete your account, all documents, templates, and associated data. This action cannot be undone.</p>
+      <div id="delete-msg" class="s-msg"></div>
+      <div class="s-form-group">
+        <label for="delete-password">Enter your password to confirm</label>
+        <input type="password" id="delete-password" placeholder="Your password">
+      </div>
+      <div class="modal-actions">
+        <button class="s-btn" id="btn-cancel-delete">Cancel</button>
+        <button class="s-btn s-btn-danger" id="btn-confirm-delete">Delete My Account</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== Auth helpers =====
+    let _csrf = null;
+    function getToken() { return localStorage.getItem('esign_token'); }
+    function authHeaders() {
+      const h = { 'Authorization': 'Bearer ' + getToken() };
+      if (_csrf) h['X-CSRF-Token'] = _csrf;
+      return h;
+    }
+    async function authFetch(url, opts = {}) {
+      if (!_csrf) {
+        try { const r = await fetch('/api/csrf-token', { headers: { 'Authorization': 'Bearer ' + getToken() } }); _csrf = (await r.json()).token; } catch (e) {}
+      }
+      opts.headers = { ...authHeaders(), ...(opts.headers || {}) };
+      const r = await fetch(url, opts);
+      if (r.status === 401) { localStorage.clear(); window.location.href = '/login'; throw new Error('expired'); }
+      return r;
+    }
+
+    function showMsg(id, text, type) {
+      const el = document.getElementById(id);
+      el.textContent = text;
+      el.className = 's-msg ' + type;
+      el.style.display = text ? '' : 'none';
+    }
+
+    // ===== Init =====
+    document.addEventListener('DOMContentLoaded', async () => {
+      if (!getToken()) { window.location.href = '/login'; return; }
+
+      // Load settings
+      let settings;
+      try {
+        const res = await authFetch('/api/settings');
+        if (!res.ok) { window.location.href = '/login'; return; }
+        settings = await res.json();
+      } catch (e) { window.location.href = '/login'; return; }
+
+      // Nav
+      document.getElementById('nav-user-name').textContent = settings.name;
+      document.getElementById('nav-avatar').textContent = (settings.name || 'U').charAt(0).toUpperCase();
+      const badge = document.getElementById('nav-plan-badge');
+      if (settings.plan_type === 'unlimited') {
+        badge.textContent = 'PRO';
+        badge.className = 'plan-badge plan-pro';
+      } else {
+        badge.textContent = 'FREE';
+        badge.className = 'plan-badge plan-free';
+      }
+      setupNav();
+
+      // Profile
+      document.getElementById('profile-name').value = settings.name;
+      document.getElementById('profile-email').value = settings.email;
+
+      // Notifications
+      document.getElementById('notify-signed').checked = !!settings.notify_signed;
+      document.getElementById('notify-expired').checked = !!settings.notify_expired;
+
+      // Branding
+      document.getElementById('company-name').value = settings.company_name || '';
+      if (settings.logo_path) {
+        showLogo('/' + settings.logo_path);
+      }
+
+      // Account
+      const planLabels = { free: 'Free', pay_per_doc: 'Pay Per Document', unlimited: 'Unlimited' };
+      const planDetails = {
+        free: `${settings.documents_sent_this_month} of 3 free documents used this month`,
+        pay_per_doc: '$1.99 per document',
+        unlimited: 'Unlimited documents — $7/mo'
+      };
+      document.getElementById('plan-name').textContent = planLabels[settings.plan_type] || 'Free';
+      document.getElementById('plan-detail').textContent = planDetails[settings.plan_type] || '';
+
+      // Show upgrade button for free/pay-per-doc users, manage billing for those with a Stripe customer
+      if (settings.plan_type !== 'unlimited') {
+        document.getElementById('btn-upgrade').style.display = '';
+      }
+      if (settings.stripe_customer_id) {
+        document.getElementById('btn-manage-billing').style.display = '';
+      }
+
+      if (settings.created_at) {
+        document.getElementById('member-since').textContent = 'Member since ' + new Date(settings.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+      }
+
+      // Load billing history
+      loadBillingHistory();
+
+      // Scroll to hash section if present
+      if (window.location.hash) {
+        const target = document.querySelector(window.location.hash);
+        if (target) setTimeout(() => target.scrollIntoView({ behavior: 'smooth' }), 100);
+      }
+
+      // ===== Event Listeners =====
+
+      // Save profile
+      document.getElementById('btn-save-profile').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-save-profile');
+        showMsg('profile-msg', '', '');
+        const name = document.getElementById('profile-name').value.trim();
+        const email = document.getElementById('profile-email').value.trim();
+        if (!name || !email) { showMsg('profile-msg', 'Name and email are required.', 'error'); return; }
+
+        btn.disabled = true; btn.textContent = 'Saving...';
+        try {
+          const res = await authFetch('/api/settings/profile', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email })
+          });
+          const data = await res.json();
+          if (!res.ok) { showMsg('profile-msg', data.error, 'error'); }
+          else {
+            showMsg('profile-msg', 'Profile updated.', 'success');
+            localStorage.setItem('esign_user', JSON.stringify(data.user));
+            document.getElementById('nav-user-name').textContent = name;
+            document.getElementById('nav-avatar').textContent = name.charAt(0).toUpperCase();
+          }
+        } catch (e) { showMsg('profile-msg', 'Network error.', 'error'); }
+        btn.disabled = false; btn.textContent = 'Save Changes';
+      });
+
+      // Change password
+      document.getElementById('btn-change-pw').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-change-pw');
+        showMsg('password-msg', '', '');
+        const currentPassword = document.getElementById('pw-current').value;
+        const newPassword = document.getElementById('pw-new').value;
+        const confirm = document.getElementById('pw-confirm').value;
+
+        if (!currentPassword || !newPassword) { showMsg('password-msg', 'All fields are required.', 'error'); return; }
+        if (newPassword.length < 8) { showMsg('password-msg', 'New password must be at least 8 characters.', 'error'); return; }
+        if (newPassword !== confirm) { showMsg('password-msg', 'New passwords do not match.', 'error'); return; }
+
+        btn.disabled = true; btn.textContent = 'Changing...';
+        try {
+          const res = await authFetch('/api/settings/password', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ currentPassword, newPassword })
+          });
+          const data = await res.json();
+          if (!res.ok) { showMsg('password-msg', data.error, 'error'); }
+          else {
+            showMsg('password-msg', 'Password changed.', 'success');
+            document.getElementById('pw-current').value = '';
+            document.getElementById('pw-new').value = '';
+            document.getElementById('pw-confirm').value = '';
+          }
+        } catch (e) { showMsg('password-msg', 'Network error.', 'error'); }
+        btn.disabled = false; btn.textContent = 'Change Password';
+      });
+
+      // Notifications — auto-save on toggle
+      document.getElementById('notify-signed').addEventListener('change', saveNotifications);
+      document.getElementById('notify-expired').addEventListener('change', saveNotifications);
+
+      async function saveNotifications() {
+        await authFetch('/api/settings/notifications', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            notify_signed: document.getElementById('notify-signed').checked,
+            notify_expired: document.getElementById('notify-expired').checked
+          })
+        });
+      }
+
+      // Logo upload
+      document.getElementById('btn-upload-logo').addEventListener('click', () => {
+        document.getElementById('logo-input').click();
+      });
+
+      document.getElementById('logo-input').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        showMsg('branding-msg', '', '');
+        const formData = new FormData();
+        formData.append('logo', file);
+        try {
+          const res = await authFetch('/api/settings/logo', { method: 'POST', body: formData });
+          const data = await res.json();
+          if (!res.ok) { showMsg('branding-msg', data.error, 'error'); }
+          else { showLogo('/' + data.logo_path + '?t=' + Date.now()); showMsg('branding-msg', 'Logo uploaded.', 'success'); }
+        } catch (e) { showMsg('branding-msg', 'Upload failed.', 'error'); }
+        e.target.value = '';
+      });
+
+      document.getElementById('btn-remove-logo').addEventListener('click', async () => {
+        showMsg('branding-msg', '', '');
+        await authFetch('/api/settings/logo', { method: 'DELETE' });
+        hideLogo();
+        showMsg('branding-msg', 'Logo removed.', 'success');
+      });
+
+      // Save branding (company name)
+      document.getElementById('btn-save-branding').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-save-branding');
+        showMsg('branding-msg', '', '');
+        btn.disabled = true; btn.textContent = 'Saving...';
+        try {
+          const res = await authFetch('/api/settings/branding', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ company_name: document.getElementById('company-name').value.trim() })
+          });
+          if (res.ok) showMsg('branding-msg', 'Branding saved.', 'success');
+          else showMsg('branding-msg', 'Failed to save.', 'error');
+        } catch (e) { showMsg('branding-msg', 'Network error.', 'error'); }
+        btn.disabled = false; btn.textContent = 'Save Branding';
+      });
+
+      // Upgrade to unlimited
+      document.getElementById('btn-upgrade').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-upgrade');
+        btn.disabled = true; btn.textContent = 'Redirecting...';
+        try {
+          const res = await authFetch('/api/billing/create-checkout', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }
+          });
+          const data = await res.json();
+          if (data.url) { window.location.href = data.url; }
+          else { showToast(data.error || 'Failed to start checkout'); btn.disabled = false; btn.textContent = 'Upgrade to Unlimited'; }
+        } catch (e) { showToast('Failed to connect'); btn.disabled = false; btn.textContent = 'Upgrade to Unlimited'; }
+      });
+
+      // Manage billing (Stripe portal)
+      document.getElementById('btn-manage-billing').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-manage-billing');
+        btn.disabled = true; btn.textContent = 'Loading...';
+        try {
+          const res = await authFetch('/api/billing/portal');
+          const data = await res.json();
+          if (data.url) { window.location.href = data.url; }
+          else { showToast(data.error || 'Failed to open billing portal'); btn.disabled = false; btn.textContent = 'Manage Billing'; }
+        } catch (e) { showToast('Failed to connect'); btn.disabled = false; btn.textContent = 'Manage Billing'; }
+      });
+
+      // Delete account
+      document.getElementById('btn-delete-account').addEventListener('click', () => {
+        document.getElementById('delete-modal').classList.add('open');
+        document.getElementById('delete-password').value = '';
+        showMsg('delete-msg', '', '');
+      });
+      document.getElementById('btn-cancel-delete').addEventListener('click', () => {
+        document.getElementById('delete-modal').classList.remove('open');
+      });
+      document.getElementById('delete-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('delete-modal')) {
+          document.getElementById('delete-modal').classList.remove('open');
+        }
+      });
+
+      document.getElementById('btn-confirm-delete').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-confirm-delete');
+        showMsg('delete-msg', '', '');
+        const password = document.getElementById('delete-password').value;
+        if (!password) { showMsg('delete-msg', 'Enter your password to confirm.', 'error'); return; }
+
+        btn.disabled = true; btn.textContent = 'Deleting...';
+        try {
+          const res = await authFetch('/api/settings/account', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            showMsg('delete-msg', data.error, 'error');
+            btn.disabled = false; btn.textContent = 'Delete My Account';
+          } else {
+            localStorage.clear();
+            window.location.href = '/login';
+          }
+        } catch (e) {
+          showMsg('delete-msg', 'Network error.', 'error');
+          btn.disabled = false; btn.textContent = 'Delete My Account';
+        }
+      });
+    });
+
+    // ===== Billing history =====
+    async function loadBillingHistory() {
+      try {
+        const res = await authFetch('/api/billing/history');
+        const history = (await res.json()).slice(0, 10);
+        if (!history.length) return;
+        document.getElementById('billing-history-section').style.display = '';
+        const list = document.getElementById('billing-history-list');
+        const typeLabels = { subscription: 'Subscription', subscription_renewal: 'Renewal', per_document: 'Per Document' };
+        list.innerHTML = history.map(h => {
+          const date = new Date(h.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+          const amount = '$' + (h.amount_cents / 100).toFixed(2);
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+            <div>
+              <span style="font-weight:500">${typeLabels[h.type] || h.type}</span>
+              <span style="color:var(--muted);margin-left:8px">${h.description || ''}</span>
+            </div>
+            <div style="display:flex;gap:16px;align-items:center">
+              <span style="font-weight:600">${amount}</span>
+              <span style="color:var(--muted)">${date}</span>
+            </div>
+          </div>`;
+        }).join('');
+      } catch (e) { /* non-critical */ }
+    }
+
+    // ===== Logo helpers =====
+    function showLogo(src) {
+      const preview = document.getElementById('logo-preview');
+      preview.innerHTML = '<img src="' + src + '" alt="Logo">';
+      document.getElementById('btn-remove-logo').style.display = '';
+    }
+    function hideLogo() {
+      const preview = document.getElementById('logo-preview');
+      preview.innerHTML = '<span class="placeholder-text">No logo</span>';
+      document.getElementById('btn-remove-logo').style.display = 'none';
+    }
+
+    // ===== Nav dropdown =====
+    function setupNav() {
+      const btn = document.getElementById('nav-user-btn');
+      const dropdown = document.getElementById('nav-dropdown');
+      btn.addEventListener('click', (e) => { e.stopPropagation(); dropdown.classList.toggle('open'); });
+      document.addEventListener('click', () => dropdown.classList.remove('open'));
+      document.getElementById('menu-logout').addEventListener('click', (e) => {
+        e.preventDefault();
+        const token = getToken();
+        if (token) fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } });
+        localStorage.clear();
+        window.location.href = '/login';
+      });
+    }
+
+    // ===== Toast (reuse pattern) =====
+    function showToast(msg) {
+      const existing = document.querySelector('.toast');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3500);
+    }
+  </script>
+</body>
+</html>
