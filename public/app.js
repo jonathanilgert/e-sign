@@ -1,4 +1,4 @@
-// ============== E-Sign: Main App ==============
+// ============== Penned: Main App ==============
 
 let state = {
   pdfDoc: null,

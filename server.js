@@ -47,7 +47,7 @@ const config = {
     }
   },
   fromEmail: process.env.FROM_EMAIL || process.env.SMTP_USER || '',
-  fromName: process.env.FROM_NAME || 'E-Sign'
+  fromName: process.env.FROM_NAME || 'Penned'
 };
 
 // --------------- Database ---------------
@@ -208,7 +208,7 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), (req
             .run(uuidv4(), userId, 'per_document', PAY_PER_DOC_PRICE, session.payment_intent || session.id, 'Pay-per-document');
           db.prepare('UPDATE users SET documents_sent_this_month = MAX(0, documents_sent_this_month - 1) WHERE id = ?').run(userId);
           if (paidUser) {
-            sendEmail(paidUser.email, 'E-Sign payment receipt', emailTemplates.paymentReceipt(paidUser.name, '$1.99', 'Single document send', receiptDate)).catch(e => console.error('Receipt email error:', e));
+            sendEmail(paidUser.email, 'Penned payment receipt', emailTemplates.paymentReceipt(paidUser.name, '$1.99', 'Single document send', receiptDate)).catch(e => console.error('Receipt email error:', e));
           }
           console.log(`[STRIPE] Per-doc payment for user ${userId}`);
         } else {
@@ -219,7 +219,7 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), (req
           db.prepare('INSERT INTO billing_history (id, user_id, type, amount_cents, stripe_payment_id, description) VALUES (?, ?, ?, ?, ?, ?)')
             .run(uuidv4(), userId, 'subscription', 700, session.payment_intent || session.id, 'Unlimited plan subscription');
           if (paidUser) {
-            sendEmail(paidUser.email, 'E-Sign payment receipt', emailTemplates.paymentReceipt(paidUser.name, '$7.00', 'Unlimited plan — monthly subscription', receiptDate)).catch(e => console.error('Receipt email error:', e));
+            sendEmail(paidUser.email, 'Penned payment receipt', emailTemplates.paymentReceipt(paidUser.name, '$7.00', 'Unlimited plan — monthly subscription', receiptDate)).catch(e => console.error('Receipt email error:', e));
           }
           console.log(`[STRIPE] User ${userId} upgraded to unlimited`);
         }
@@ -530,7 +530,7 @@ function emailLayout(content, options = {}) {
 
 <!-- Header -->
 <tr><td style="background:#1a1a2e;padding:24px 32px">
-  <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.5px">E-Sign</span>
+  <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.5px">Penned</span>
 </td></tr>
 
 <!-- Body -->
@@ -541,12 +541,12 @@ ${content}
 <!-- Footer -->
 <tr><td style="padding:20px 32px 28px;border-top:1px solid #e5e7eb">
   <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.6">
-    Sent by E-Sign${config.fromEmail ? ' &middot; ' + config.fromEmail : ''}
+    Sent by Penned${config.fromEmail ? ' &middot; ' + config.fromEmail : ''}
   </p>
   ${options.hideUnsubscribe ? '' : `<p style="margin:6px 0 0;font-size:12px;color:#9ca3af">
     <a href="${settingsUrl}" style="color:#6b7280;text-decoration:underline">Email preferences</a>
   </p>`}
-  <p style="margin:6px 0 0;font-size:11px;color:#d1d5db">&copy; ${year} E-Sign</p>
+  <p style="margin:6px 0 0;font-size:11px;color:#d1d5db">&copy; ${year} Penned</p>
 </td></tr>
 
 </table>
@@ -565,10 +565,10 @@ const emailTemplates = {
 
   welcome(name) {
     return emailLayout(`
-      <h2 style="margin:0 0 8px;font-size:22px;color:#1a1a2e">Welcome to E-Sign</h2>
+      <h2 style="margin:0 0 8px;font-size:22px;color:#1a1a2e">Welcome to Penned</h2>
       <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6">Hi ${name},</p>
       <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6">
-        Your account is ready. E-Sign lets you send documents for signature in minutes &mdash; no printing, scanning, or mailing.
+        Your account is ready. Penned lets you send documents for signature in minutes &mdash; no printing, scanning, or mailing.
       </p>
       <p style="margin:0 0 4px;font-size:15px;color:#374151;line-height:1.6">Here's how to get started:</p>
       <ol style="margin:8px 0 20px;padding-left:20px;font-size:14px;color:#374151;line-height:1.8">
@@ -622,7 +622,7 @@ const emailTemplates = {
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6">
         <strong>${docTitle}</strong> has been fully signed by both parties. A copy of the executed document is attached for your records.
       </p>
-      <p style="margin:0;font-size:13px;color:#9ca3af">This document was digitally signed via E-Sign. Both parties attested that this electronic signature is legally binding.</p>
+      <p style="margin:0;font-size:13px;color:#9ca3af">This document was digitally signed via Penned. Both parties attested that this electronic signature is legally binding.</p>
     `, { hideUnsubscribe: true });
   },
 
@@ -842,7 +842,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
     const token = generateToken(user);
 
     // Send welcome email (non-blocking)
-    sendEmail(user.email, 'Welcome to E-Sign', emailTemplates.welcome(user.name)).catch(e => console.error('Welcome email error:', e));
+    sendEmail(user.email, 'Welcome to Penned', emailTemplates.welcome(user.name)).catch(e => console.error('Welcome email error:', e));
 
     res.json({ token, user });
   } catch (err) {
@@ -916,7 +916,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   const resetUrl = `${BASE_URL}/login.html?reset=${token}`;
   await sendEmail(
     email,
-    'Reset your E-Sign password',
+    'Reset your Penned password',
     emailTemplates.passwordReset(user.name, resetUrl)
   );
 
@@ -1209,7 +1209,7 @@ app.post('/api/billing/create-per-doc-checkout', requireAuth, async (req, res) =
         price_data: {
           currency: 'usd',
           unit_amount: PAY_PER_DOC_PRICE,
-          product_data: { name: 'E-Sign: Single Document', description: 'One-time charge for sending one document' }
+          product_data: { name: 'Penned: Single Document', description: 'One-time charge for sending one document' }
         },
         quantity: 1
       }],
@@ -1798,7 +1798,7 @@ async function runDailyTasks() {
 setInterval(runDailyTasks, 6 * 60 * 60 * 1000);
 
 app.listen(PORT, () => {
-  console.log(`\n  E-Sign running at ${BASE_URL}\n`);
+  console.log(`\n  Penned running at ${BASE_URL}\n`);
   if (!config.resendApiKey && !config.smtp.auth.user) {
     console.log('  [!] Email not configured. Set RESEND_API_KEY or SMTP_USER/SMTP_PASS.\n');
   }
