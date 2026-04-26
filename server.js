@@ -1695,6 +1695,9 @@ app.get('/dashboard', (req, res) => {
 // can't read auth state on a plain GET. Instead, the landing page JS checks
 // localStorage and redirects to /dashboard if a token exists.
 app.get('/', (req, res) => {
+  // Landing page is a self-unpacking bundle that needs permissive CSP
+  // (creates blob: URLs for scripts and data: URLs for fonts at runtime)
+  res.setHeader('Content-Security-Policy', "default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob: https://fonts.gstatic.com; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com");
   res.sendFile(path.join(__dirname, 'public', 'landing.html'));
 });
 
