@@ -1220,6 +1220,7 @@ app.post('/api/billing/create-checkout', requireAuth, async (req, res) => {
       customer: customerId,
       mode: 'subscription',
       line_items: [{ price: STRIPE_PRICE_ID_UNLIMITED, quantity: 1 }],
+      allow_promotion_codes: true,
       success_url: `${BASE_URL}/dashboard?billing=unlimited_success`,
       cancel_url: `${BASE_URL}/dashboard?billing=cancelled`,
       metadata: { user_id: user.id, type: 'unlimited' }
@@ -1261,6 +1262,7 @@ app.post('/api/billing/create-per-doc-checkout', requireAuth, async (req, res) =
         },
         quantity: 1
       }],
+      allow_promotion_codes: true,
       success_url: `${BASE_URL}/dashboard?billing=per_doc_success`,
       cancel_url: `${BASE_URL}/dashboard?billing=cancelled`,
       metadata: { user_id: user.id, type: 'per_doc' }
