@@ -12,8 +12,16 @@ let state = {
   loadedSavedTemplate: null,
   scale: 1.5,
   allDocs: [],       // full doc list for filtering
-  currentView: 'dashboard'
+  currentView: 'dashboard',
+  // Single-pass flow: sender's text values and signature, captured during placement
+  senderFieldValues: {},
+  senderSignature: null
 };
+
+// Sender signature canvas refs (set up in setupSenderSignaturePad on first use)
+let senderSigCanvas = null;
+let senderSigCtx = null;
+let senderSigDrawing = false;
 
 // --------------- Auth & CSRF Helpers ---------------
 let _csrfToken = null;
@@ -124,6 +132,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-done-fields').addEventListener('click', finishFieldPlacement);
   document.getElementById('btn-undo').addEventListener('click', removeLastField);
   document.getElementById('btn-save-template').addEventListener('click', saveFieldsAsTemplate);
+
+  // Send confirmation modal — final check before recipient is emailed
+  document.getElementById('btn-send-cancel').addEventListener('click', closeSendConfirm);
+  document.getElementById('btn-send-confirm').addEventListener('click', confirmAndSend);
+  document.getElementById('send-confirm-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'send-confirm-modal') closeSendConfirm();
+  });
+  // Toggle the template-name input when the user opts to save the template
+  document.getElementById('send-confirm-save-template').addEventListener('change', (e) => {
+    const nameInput = document.getElementById('send-confirm-template-name');
+    nameInput.style.display = e.target.checked ? '' : 'none';
+    if (e.target.checked) {
+      if (!nameInput.value) nameInput.value = state.docInfo ? (state.docInfo.title || '') : '';
+      nameInput.focus();
+    }
+  });
 });
 
 // --------------- View Switching ---------------
@@ -150,6 +174,14 @@ function showView(view) {
     state.loadedSavedTemplate = null;
     state.prefillFieldValues = null;
     state.prefillSignature = null;
+    state.senderFieldValues = {};
+    state.senderSignature = null;
+    // Hide and clear the inline signature pad if it's been used
+    const sigSection = document.getElementById('sender-signature-section');
+    if (sigSection) sigSection.style.display = 'none';
+    if (senderSigCtx && senderSigCanvas) {
+      senderSigCtx.clearRect(0, 0, senderSigCanvas.width, senderSigCanvas.height);
+    }
     document.querySelectorAll('.library-item.selected').forEach(b => b.classList.remove('selected'));
     const detail = document.getElementById('library-detail');
     if (detail) detail.innerHTML = '<div class="library-detail-empty"><p class="hint" style="margin:0">Select a template from the library on the left to use it as the starting point for your document.</p></div>';
@@ -562,6 +594,9 @@ async function prepareDocument() {
       }
       state.prefillFieldValues = remapped;
       state.prefillSignature = saved.sender_signature || null;
+      // Single-pass flow: seed the inline editor with the template's saved values/signature
+      state.senderFieldValues = { ...remapped };
+      state.senderSignature = saved.sender_signature || null;
     }
 
     if (saved.uploaded_pdf_path) {
@@ -577,6 +612,8 @@ async function prepareDocument() {
     state.libraryItemId = state.selectedLibraryItem.id;
     pdfUrl = `/api/library/${encodeURIComponent(state.libraryItemId)}/pdf`;
     state.fields = [];
+    state.senderFieldValues = {};
+    state.senderSignature = null;
   } else {
     const fileInput = document.getElementById('pdf-upload');
     if (!fileInput.files[0]) { showToast('Please select a PDF'); return; }
@@ -587,6 +624,8 @@ async function prepareDocument() {
     state.uploadedPath = uploadData.path;
     pdfUrl = `/uploads/${uploadData.path.split(/[/\\]/).pop()}`;
     state.fields = [];
+    state.senderFieldValues = {};
+    state.senderSignature = null;
   }
 
   try {
@@ -722,10 +761,22 @@ function renderFieldMarkers() {
 
   const pageFields = state.fields.filter(f => f.page === state.currentPage - 1);
   const canvas = container.querySelector('canvas');
+  const hasSenderSig = state.fields.some(f => f.role === 'sender' && f.type === 'signature');
 
   pageFields.forEach((field) => {
     const marker = document.createElement('div');
-    marker.className = `field-marker ${field.role}`;
+    // Sender's own text/date/initials/name fields are inline-editable in this single-pass
+    // flow — sender fills in values right here instead of a separate signing screen.
+    // Sender's signature field shows a "Click to sign" placeholder that opens the pad below.
+    // Recipient fields stay label-only — they fill those in remotely from the email link.
+    const isEditableForSender = field.role === 'sender' && field.type !== 'signature';
+    const isSenderSigField = field.role === 'sender' && field.type === 'signature';
+
+    let extraClass = '';
+    if (isEditableForSender) extraClass = ' editable';
+    else if (isSenderSigField) extraClass = ' sig-field';
+
+    marker.className = `field-marker ${field.role}${extraClass}`;
     marker.style.left = field.displayX + '%';
     marker.style.top = field.displayY + '%';
 
@@ -736,7 +787,57 @@ function renderFieldMarkers() {
     }
 
     const roleLabel = field.role === 'sender' ? 'You' : 'Them';
-    marker.innerHTML = `<span class="field-marker-label">${roleLabel}: ${field.label}</span><span class="remove-field" data-id="${field.id}">&times;</span>`;
+    const labelEl = document.createElement('span');
+    labelEl.className = 'field-marker-label';
+    labelEl.textContent = `${roleLabel}: ${field.label}`;
+    marker.appendChild(labelEl);
+
+    const removeBtn = document.createElement('span');
+    removeBtn.className = 'remove-field';
+    removeBtn.dataset.id = field.id;
+    removeBtn.innerHTML = '&times;';
+    marker.appendChild(removeBtn);
+
+    if (isEditableForSender) {
+      const input = document.createElement('input');
+      input.className = 'marker-input';
+      input.type = field.type === 'date' ? 'date' : 'text';
+      input.dataset.fieldId = field.id;
+      input.placeholder = field.type === 'name' ? 'Full legal name'
+                        : field.type === 'initials' ? 'Initials'
+                        : field.type === 'date' ? '' : 'Type here';
+      // Restore prior value (preserved across re-renders / page navigation / template prefill)
+      if (state.senderFieldValues[field.id] !== undefined) {
+        input.value = state.senderFieldValues[field.id];
+      } else if (field.type === 'date') {
+        // Default dates to today so users don't have to type the common case
+        const today = new Date().toISOString().split('T')[0];
+        input.value = today;
+        state.senderFieldValues[field.id] = today;
+      }
+      input.addEventListener('input', () => {
+        state.senderFieldValues[field.id] = input.value;
+      });
+      // Don't start a marker drag when the user clicks into the input
+      input.addEventListener('mousedown', (e) => e.stopPropagation());
+      marker.appendChild(input);
+    } else if (isSenderSigField) {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'sig-placeholder';
+      placeholder.dataset.fieldId = field.id;
+      if (state.senderSignature) {
+        placeholder.classList.add('signed');
+        placeholder.textContent = 'Signed';
+      } else {
+        placeholder.textContent = 'Click to sign';
+      }
+      placeholder.addEventListener('mousedown', (e) => e.stopPropagation());
+      placeholder.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openSenderSignaturePad();
+      });
+      marker.appendChild(placeholder);
+    }
 
     if (field.type !== 'signature') {
       const resizeHandle = document.createElement('div');
@@ -754,10 +855,23 @@ function renderFieldMarkers() {
       e.stopPropagation();
       const id = e.target.dataset.id;
       state.fields = state.fields.filter(f => f.id !== id);
+      // Drop any captured sender value for this field
+      delete state.senderFieldValues[id];
       renderFieldMarkers();
       updateFieldSummary();
     });
   });
+
+  // Show or hide the sender signature pad based on whether a sender sig field exists
+  const sigSection = document.getElementById('sender-signature-section');
+  if (sigSection) {
+    sigSection.style.display = hasSenderSig ? '' : 'none';
+    // If a saved-template prefilled a signature, initialize the pad so the existing
+    // signature renders into the canvas (otherwise it'd only show when the user clicks).
+    if (hasSenderSig && state.senderSignature) {
+      setupSenderSignaturePad();
+    }
+  }
 }
 
 function setupDrag(marker, field, container) {
@@ -765,6 +879,10 @@ function setupDrag(marker, field, container) {
 
   marker.addEventListener('mousedown', (e) => {
     if (e.target.classList.contains('remove-field')) return;
+    // Don't drag when the user is typing into an inline input or clicking a signature
+    // placeholder — those events need to pass through to focus / click the inner element.
+    if (e.target.classList.contains('marker-input')) return;
+    if (e.target.classList.contains('sig-placeholder')) return;
     e.preventDefault();
     hasMoved = false;
     startX = e.clientX;
@@ -1043,18 +1161,114 @@ function showUpgradeModal(status, resolve) {
   });
 }
 
-// --------------- Finish & Create Document ---------------
+// --------------- Sender Signature Pad (placement-page, single-pass flow) ---------------
+function setupSenderSignaturePad() {
+  if (senderSigCanvas) return; // Already set up
+  senderSigCanvas = document.getElementById('sender-sig-canvas');
+  if (!senderSigCanvas) return;
+  senderSigCtx = senderSigCanvas.getContext('2d');
+
+  // Match canvas pixel resolution to its rendered size so strokes look crisp
+  const rect = senderSigCanvas.getBoundingClientRect();
+  senderSigCanvas.width = rect.width || 500;
+  senderSigCanvas.height = 120;
+
+  senderSigCtx.strokeStyle = '#1a1a2e';
+  senderSigCtx.lineWidth = 2;
+  senderSigCtx.lineCap = 'round';
+  senderSigCtx.lineJoin = 'round';
+
+  function getPos(e) {
+    const r = senderSigCanvas.getBoundingClientRect();
+    const touch = e.touches ? e.touches[0] : e;
+    const scaleX = senderSigCanvas.width / r.width;
+    const scaleY = senderSigCanvas.height / r.height;
+    return { x: (touch.clientX - r.left) * scaleX, y: (touch.clientY - r.top) * scaleY };
+  }
+
+  senderSigCanvas.addEventListener('mousedown', (e) => { senderSigDrawing = true; senderSigCtx.beginPath(); const p = getPos(e); senderSigCtx.moveTo(p.x, p.y); });
+  senderSigCanvas.addEventListener('mousemove', (e) => { if (!senderSigDrawing) return; const p = getPos(e); senderSigCtx.lineTo(p.x, p.y); senderSigCtx.stroke(); });
+  senderSigCanvas.addEventListener('mouseup', () => { senderSigDrawing = false; commitSenderSignature(); });
+  senderSigCanvas.addEventListener('mouseleave', () => { senderSigDrawing = false; });
+
+  senderSigCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); senderSigDrawing = true; senderSigCtx.beginPath(); const p = getPos(e); senderSigCtx.moveTo(p.x, p.y); });
+  senderSigCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (!senderSigDrawing) return; const p = getPos(e); senderSigCtx.lineTo(p.x, p.y); senderSigCtx.stroke(); });
+  senderSigCanvas.addEventListener('touchend', () => { senderSigDrawing = false; commitSenderSignature(); });
+
+  document.getElementById('btn-clear-sender-sig').addEventListener('click', () => {
+    senderSigCtx.clearRect(0, 0, senderSigCanvas.width, senderSigCanvas.height);
+    state.senderSignature = null;
+    document.querySelectorAll('.field-marker .sig-placeholder').forEach(el => {
+      el.classList.remove('signed');
+      el.textContent = 'Click to sign';
+    });
+  });
+
+  // Restore a previously-drawn signature (e.g. from a saved template prefill)
+  if (state.senderSignature) {
+    const img = new Image();
+    img.onload = () => {
+      senderSigCtx.drawImage(img, 0, 0, senderSigCanvas.width, senderSigCanvas.height);
+    };
+    img.src = state.senderSignature;
+  }
+}
+
+function commitSenderSignature() {
+  if (!senderSigCtx || !senderSigCanvas) return;
+  const imageData = senderSigCtx.getImageData(0, 0, senderSigCanvas.width, senderSigCanvas.height);
+  const hasContent = imageData.data.some((val, i) => i % 4 === 3 && val > 0);
+  if (hasContent) {
+    state.senderSignature = senderSigCanvas.toDataURL('image/png');
+    document.querySelectorAll('.field-marker .sig-placeholder').forEach(el => {
+      el.classList.add('signed');
+      el.textContent = 'Signed';
+    });
+  } else {
+    state.senderSignature = null;
+  }
+}
+
+function openSenderSignaturePad() {
+  const section = document.getElementById('sender-signature-section');
+  if (!section) return;
+  section.style.display = '';
+  setupSenderSignaturePad();
+  section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// --------------- Finish & Send Document (single-pass) ---------------
 async function finishFieldPlacement() {
   if (state.fields.length === 0) {
     showToast('Please place at least one field on the document');
     return;
   }
 
-  const hasSenderSig = state.fields.some(f => f.role === 'sender' && f.type === 'signature');
-  const hasRecipientSig = state.fields.some(f => f.role === 'recipient' && f.type === 'signature');
+  const senderFields = state.fields.filter(f => f.role === 'sender');
+  const recipientFields = state.fields.filter(f => f.role === 'recipient');
+  const hasSenderSig = senderFields.some(f => f.type === 'signature');
+  const hasRecipientSig = recipientFields.some(f => f.type === 'signature');
 
   if (!hasSenderSig || !hasRecipientSig) {
     if (!confirm('You haven\'t placed signature fields for both parties. Continue anyway?')) return;
+  }
+
+  // Validate that every sender text/date/etc. field has a value typed in
+  const missingValue = senderFields.find(f => {
+    if (f.type === 'signature') return false;
+    const v = state.senderFieldValues[f.id];
+    return v === undefined || v === null || String(v).trim() === '';
+  });
+  if (missingValue) {
+    showToast(`Please fill in your "${missingValue.label}" field before sending`);
+    return;
+  }
+
+  // Validate signature is drawn if a sender signature field exists
+  if (hasSenderSig && !state.senderSignature) {
+    showToast('Please draw your signature in the signature pad below');
+    openSenderSignaturePad();
+    return;
   }
 
   if (!state.docInfo.recipientName || !state.docInfo.recipientEmail) {
@@ -1062,11 +1276,50 @@ async function finishFieldPlacement() {
     return;
   }
 
-  // Check billing status before creating document
-  const billing = await checkAndHandleBilling();
-  if (!billing.proceed) return;
+  // Open the confirmation modal — actual send happens in confirmAndSend
+  openSendConfirm();
+}
 
-  const body = {
+function openSendConfirm() {
+  document.getElementById('send-confirm-doc-title').textContent = state.docInfo.title;
+  document.getElementById('send-confirm-recipient-name').textContent = state.docInfo.recipientName;
+  document.getElementById('send-confirm-recipient-email').textContent = state.docInfo.recipientEmail;
+  // Reset the save-as-template controls each time the modal opens
+  const saveCheckbox = document.getElementById('send-confirm-save-template');
+  const nameInput = document.getElementById('send-confirm-template-name');
+  saveCheckbox.checked = false;
+  nameInput.style.display = 'none';
+  nameInput.value = '';
+  document.getElementById('send-confirm-modal').style.display = '';
+}
+
+function closeSendConfirm() {
+  const modal = document.getElementById('send-confirm-modal');
+  if (modal) modal.style.display = 'none';
+  // Re-enable confirm button in case it was disabled mid-send
+  const btn = document.getElementById('btn-send-confirm');
+  if (btn) { btn.disabled = false; btn.textContent = 'Send now'; }
+}
+
+async function confirmAndSend() {
+  const confirmBtn = document.getElementById('btn-send-confirm');
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Sending…';
+
+  const wantsTemplate = document.getElementById('send-confirm-save-template').checked;
+  const tplName = wantsTemplate
+    ? (document.getElementById('send-confirm-template-name').value.trim() || state.docInfo.title || 'My Template')
+    : null;
+
+  // Check billing before creating the document
+  const billing = await checkAndHandleBilling();
+  if (!billing.proceed) {
+    closeSendConfirm();
+    return;
+  }
+
+  // Step 1: Create the document
+  const createBody = {
     title: state.docInfo.title,
     libraryItemId: state.libraryItemId || undefined,
     pdfSource: state.uploadedPath || undefined,
@@ -1078,29 +1331,97 @@ async function finishFieldPlacement() {
     fields: state.fields
   };
 
-  const res = await authFetch('/api/documents', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-
-  if (res.status === 402) {
-    // Server-side billing rejection — shouldn't normally happen since we check client-side
-    const data = await res.json();
-    showToast(data.error || 'Document limit reached');
+  let createRes;
+  try {
+    createRes = await authFetch('/api/documents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(createBody)
+    });
+  } catch (err) {
+    showToast('Network error creating the document. Please try again.');
+    closeSendConfirm();
     return;
   }
 
-  const data = await res.json();
-  if (data.id) {
-    if (state.prefillFieldValues || state.prefillSignature) {
-      sessionStorage.setItem('prefill_' + data.id, JSON.stringify({
-        fieldValues: state.prefillFieldValues || {},
-        signature: state.prefillSignature || null
-      }));
-    }
-    window.location.href = `/sign/${data.id}?role=sender`;
+  if (createRes.status === 402) {
+    const data = await createRes.json();
+    showToast(data.error || 'Document limit reached');
+    closeSendConfirm();
+    return;
   }
+  if (!createRes.ok) {
+    showToast('Could not create the document. Please try again.');
+    closeSendConfirm();
+    return;
+  }
+
+  const created = await createRes.json();
+  if (!created || !created.id) {
+    showToast('Unexpected response from server.');
+    closeSendConfirm();
+    return;
+  }
+
+  // Step 2: Save the template BEFORE sign-sender — sign-sender stamps the sender's
+  // signature and values onto the PDF on disk (overwriting it). If we save the template
+  // after that, the template would carry your old signature baked into the PDF, which
+  // is unusable for future sends. Saving here uses the still-blank PDF.
+  // Use the doc's freshly-created pdf_path (covers upload, library, and saved-template
+  // sources uniformly — all three end up at uploads/<id>.pdf as a clean copy).
+  let templateSavedOk = null; // null = wasn't requested, true/false = outcome
+  if (wantsTemplate && tplName) {
+    const tplRes = await authFetch('/api/saved-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: tplName,
+        stage: 'ready_to_send',
+        uploadedPdfPath: created.pdf_path || state.uploadedPath || state.savedPdfPath || null,
+        templateName: state.templateName || null,
+        fields: state.fields,
+        senderName: state.docInfo.senderName,
+        senderEmail: state.docInfo.senderEmail,
+        senderFieldValues: state.senderFieldValues,
+        senderSignature: state.senderSignature,
+        docTitle: state.docInfo.title
+      })
+    });
+    templateSavedOk = tplRes.ok;
+  }
+
+  // Step 3: Submit sender values + signature, which stamps the PDF and emails the recipient
+  const signRes = await authFetch(`/api/documents/${created.id}/sign-sender`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fieldValues: state.senderFieldValues,
+      signatureDataUrl: state.senderSignature,
+      attestation: true,
+      fields: state.fields
+    })
+  });
+
+  if (!signRes.ok) {
+    // Doc was created but sender-sign failed. Fall back to the legacy signing page so the
+    // user can retry from there rather than losing their work.
+    showToast('Saved your document, but couldn\'t finalize the send. Continuing on the signing page.');
+    closeSendConfirm();
+    window.location.href = `/sign/${created.id}?role=sender`;
+    return;
+  }
+
+  closeSendConfirm();
+
+  // Compose a single toast that reflects what actually happened
+  let msg = `Sent to ${state.docInfo.recipientName}. Awaiting their signature.`;
+  if (templateSavedOk === true) {
+    msg = `Sent to ${state.docInfo.recipientName}. Template "${tplName}" saved.`;
+  } else if (templateSavedOk === false) {
+    msg = `Sent to ${state.docInfo.recipientName}, but the template couldn't be saved.`;
+  }
+  showToast(msg);
+  showView('dashboard');
 }
 
 // --------------- Saved Templates ---------------

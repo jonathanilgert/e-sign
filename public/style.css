@@ -1307,6 +1307,175 @@ input:focus, select:focus, textarea:focus {
 }
 .inline-resize-handle:hover { opacity: 0.95; }
 
+/* --- Inline-editable field markers (sender's own fields, single-pass flow) --- */
+.field-marker.editable {
+  padding: 0;
+  overflow: visible;
+  background: rgba(255, 255, 255, 0.92);
+}
+.field-marker.editable .field-marker-label {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 9px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 0 4px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.field-marker.editable .marker-input {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--ink);
+  border-radius: 2px;
+  outline: none;
+  cursor: text;
+}
+.field-marker.editable .marker-input:focus {
+  background: var(--paper);
+  box-shadow: 0 0 0 2px var(--accent-tint) inset;
+}
+.field-marker.editable .remove-field {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 1px solid currentColor;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 12;
+}
+
+/* Sender's signature field marker — "Click to sign" placeholder */
+.field-marker.sig-field {
+  padding: 0;
+  overflow: visible;
+  cursor: pointer;
+}
+.field-marker.sig-field .sig-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: color-mix(in oklch, var(--accent-tint) 50%, var(--paper));
+  border-radius: 3px;
+}
+.field-marker.sig-field .sig-placeholder.signed {
+  font-style: normal;
+  text-transform: none;
+  background: color-mix(in oklch, var(--accent-tint) 75%, var(--paper));
+}
+
+/* Sender signature pad on the placement page */
+.sender-sig-card {
+  margin-top: 16px;
+}
+.sender-sig-card .sig-canvas {
+  width: 100%;
+  height: 120px;
+  border: 1.5px dashed var(--border);
+  border-radius: 8px;
+  background: var(--paper);
+  display: block;
+  cursor: crosshair;
+  touch-action: none;
+}
+.sender-sig-card .sig-actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Send confirmation modal */
+.send-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 20, 28, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+.send-confirm-dialog {
+  background: var(--paper);
+  border-radius: 14px;
+  box-shadow: 0 30px 60px rgba(20, 30, 40, 0.25);
+  padding: 28px 30px;
+  max-width: 460px;
+  width: 100%;
+}
+.send-confirm-dialog h3 {
+  margin: 0 0 6px;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+.send-confirm-sub {
+  font-size: 13px;
+  color: var(--ink-3);
+  margin: 0 0 18px;
+}
+.send-confirm-row {
+  display: flex;
+  gap: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.send-confirm-row:last-of-type { border-bottom: 0; }
+.send-confirm-label {
+  width: 90px;
+  color: var(--ink-3);
+}
+.send-confirm-value { flex: 1; word-break: break-word; }
+.send-confirm-template {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+}
+.send-confirm-template input { margin: 0; }
+#send-confirm-template-name {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.send-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
 /* Completed page */
 .completed-banner {
   text-align: center;

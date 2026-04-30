@@ -1367,7 +1367,9 @@ app.post('/api/documents', docSendLimiter, (req, res) => {
     db.prepare('UPDATE users SET documents_sent_this_month = documents_sent_this_month + 1 WHERE id = ?').run(userId);
   }
 
-  res.json({ id, url: `${BASE_URL}/sign/${id}?role=sender` });
+  // Include pdf_path so the client can reference the freshly-created file
+  // (e.g. to save as a template before sign-sender overwrites it).
+  res.json({ id, url: `${BASE_URL}/sign/${id}?role=sender`, pdf_path: pdfPath });
 });
 
 // Dashboard stats

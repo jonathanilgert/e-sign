@@ -224,10 +224,50 @@
 
         <div id="field-summary"></div>
 
-        <button class="btn btn-primary" id="btn-done-fields">Continue to Sign</button>
+        <!-- Sender signature pad — appears once a sender signature field is placed.
+             Clicking a "Click to sign" placeholder on the doc opens this section. -->
+        <section id="sender-signature-section" class="card sender-sig-card" style="display:none">
+          <h3>Your Signature</h3>
+          <p class="hint">Draw your signature once — it'll be applied to every signature field you placed for yourself.</p>
+          <canvas id="sender-sig-canvas" class="sig-canvas"></canvas>
+          <div class="sig-actions">
+            <button class="btn btn-sm btn-ghost" id="btn-clear-sender-sig" type="button">Clear</button>
+          </div>
+        </section>
+
+        <button class="btn btn-primary" id="btn-done-fields">Send to Recipient</button>
       </section>
     </div>
   </main>
+
+  <!-- Send confirmation modal — final check before recipient is emailed -->
+  <div class="send-confirm-overlay" id="send-confirm-modal" style="display:none">
+    <div class="send-confirm-dialog">
+      <h3>Send to recipient?</h3>
+      <p class="send-confirm-sub">Once you confirm, this document goes straight to the recipient's inbox.</p>
+      <div class="send-confirm-row">
+        <div class="send-confirm-label">Document</div>
+        <div class="send-confirm-value" id="send-confirm-doc-title"></div>
+      </div>
+      <div class="send-confirm-row">
+        <div class="send-confirm-label">To</div>
+        <div class="send-confirm-value"><strong id="send-confirm-recipient-name"></strong></div>
+      </div>
+      <div class="send-confirm-row">
+        <div class="send-confirm-label">Email</div>
+        <div class="send-confirm-value"><strong id="send-confirm-recipient-email"></strong></div>
+      </div>
+      <label class="send-confirm-template">
+        <input type="checkbox" id="send-confirm-save-template" />
+        <span>Save this as a reusable template for future use</span>
+      </label>
+      <input type="text" id="send-confirm-template-name" placeholder="Template name (e.g. 'Standard Lease')" style="display:none" />
+      <div class="send-confirm-actions">
+        <button class="btn btn-ghost" id="btn-send-cancel" type="button">Cancel</button>
+        <button class="btn btn-primary" id="btn-send-confirm" type="button">Send now</button>
+      </div>
+    </div>
+  </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>
