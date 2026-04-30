@@ -321,10 +321,40 @@ function renderFilteredDocs() {
 }
 
 // --------------- Documents List ---------------
+// Escape a string for safe use as an HTML attribute value (used for data-* in row actions)
+function escapeAttr(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 async function loadDocuments() {
   const res = await authFetch('/api/documents');
   state.allDocs = await res.json();
   renderFilteredDocs();
+  bindDocActions();
+}
+
+// Delegated click handler for the documents table — bound once, survives re-renders.
+let _docActionsBound = false;
+function bindDocActions() {
+  if (_docActionsBound) return;
+  const container = document.getElementById('documents-table');
+  if (!container) return;
+  container.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const docId = btn.dataset.docId;
+    if (action === 'delete') {
+      deleteDocument(docId, btn.dataset.docTitle || '');
+    } else if (action === 'remind') {
+      remindRecipient(docId);
+    }
+  });
+  _docActionsBound = true;
 }
 
 function renderDocTable(docs) {
@@ -380,14 +410,14 @@ function renderDocTable(docs) {
       actions += `<a href="/sign/${d.id}?role=sender" class="btn btn-sm">Sign</a>`;
     }
     if (d.status === 'awaiting_recipient') {
-      actions += `<button class="btn btn-sm btn-resend" onclick="remindRecipient('${d.id}')">Resend</button>`;
+      actions += `<button class="btn btn-sm btn-resend" data-action="remind" data-doc-id="${d.id}">Resend</button>`;
       actions += `<a href="/sign/${d.id}?role=recipient" class="btn btn-sm">View</a>`;
     }
     if (d.status === 'completed') {
       actions += `<a href="/api/documents/${d.id}/pdf" class="btn btn-sm btn-success" download>Download</a>`;
     }
     if (d.status !== 'completed') {
-      actions += `<button class="btn btn-sm btn-delete" onclick="deleteDocument('${d.id}', '${escapedTitle}')">&#10005;</button>`;
+      actions += `<button class="btn btn-sm btn-delete" data-action="delete" data-doc-id="${d.id}" data-doc-title="${escapeAttr(d.title || '')}">&#10005;</button>`;
     }
 
     return `<div class="doc-table-row${d.status === 'expired' ? ' doc-expired' : ''}">
@@ -411,13 +441,24 @@ function renderDocTable(docs) {
 // --------------- Delete Document ---------------
 async function deleteDocument(id, title) {
   if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
-  const res = await authFetch(`/api/documents/${id}`, { method: 'DELETE' });
-  if (res.ok) {
-    showToast('Document deleted');
-    loadDocuments();
-    loadStats();
-  } else {
-    showToast('Failed to delete document');
+  try {
+    const res = await authFetch(`/api/documents/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast('Document deleted');
+      loadDocuments();
+      loadStats();
+      return;
+    }
+    let detail = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data && data.error) detail = data.error;
+    } catch (_) { /* response wasn't JSON */ }
+    showToast(`Couldn't delete: ${detail}`);
+    console.error('[delete] failed', { id, status: res.status, detail });
+  } catch (err) {
+    showToast(`Couldn't delete: ${err && err.message ? err.message : 'network error'}`);
+    console.error('[delete] threw', err);
   }
 }
 
