@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "id": "real-estate",
+      "name": "Real Estate",
+      "description": "Standard residential and commercial leases",
+      "items": [
+        {
+          "id": "ontario-tenancy-2229e",
+          "name": "Ontario Standard Form Lease",
+          "subtitle": "Form 2229E — Residential Tenancy Agreement",
+          "province": "ON",
+          "file": "real-estate/ontario-residential-tenancy-2229E.pdf",
+          "source": "https://forms.mgcs.gov.on.ca/en/dataset/047-2229",
+          "description": "Mandatory standard lease for most private residential tenancies in Ontario, signed on or after March 1, 2021."
+        },
+        {
+          "id": "bc-residential-tenancy-rtb1",
+          "name": "British Columbia Residential Tenancy Agreement",
+          "subtitle": "RTB-1 — Residential Tenancy Branch",
+          "province": "BC",
+          "file": "real-estate/bc-residential-tenancy-rtb1.pdf",
+          "source": "https://www2.gov.bc.ca/gov/content/housing-tenancy/residential-tenancies",
+          "description": "Standard residential tenancy agreement issued by the BC Residential Tenancy Branch."
+        }
+      ]
+    },
+    {
+      "id": "vehicles",
+      "name": "Vehicles",
+      "description": "Bills of sale and ownership transfers, by province",
+      "items": [
+        {
+          "id": "bc-icbc-apv9t",
+          "name": "British Columbia Vehicle Transfer/Tax Form",
+          "subtitle": "APV9T — ICBC",
+          "province": "BC",
+          "file": "vehicles/bc-icbc-apv9t-transfer-tax.pdf",
+          "source": "https://www.icbc.com/vehicle-registration/sell-vehicle/Selling-a-used-vehicle",
+          "description": "Required form when selling a used vehicle in British Columbia. Both buyer and seller signatures required."
+        },
+        {
+          "id": "saskatchewan-bill-of-sale",
+          "name": "Saskatchewan Bill of Sale / Letter of Gift",
+          "subtitle": "SGI",
+          "province": "SK",
+          "file": "vehicles/saskatchewan-bill-of-sale.pdf",
+          "source": "https://sgi.sk.ca/new-and-used-vehicles",
+          "description": "SGI-issued bill of sale for vehicle ownership transfer. Includes PST exemption fields for qualifying family transfers."
+        },
+        {
+          "id": "manitoba-bill-of-sale",
+          "name": "Manitoba Bill of Sale",
+          "subtitle": "MPI Sample",
+          "province": "MB",
+          "file": "vehicles/manitoba-bill-of-sale.pdf",
+          "source": "https://www.mpi.mb.ca/ownership-transfers/",
+          "description": "Manitoba Public Insurance bill of sale sample. Required for vehicle registration following a private sale."
+        }
+      ]
+    }
+  ]
+}

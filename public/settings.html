@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Settings - Penned</title>
-  <link rel="stylesheet" href="/style.css?v=7">
+  <link rel="stylesheet" href="/style.css?v=8">
   <style>
     .settings-layout {
       max-width: 720px;
@@ -15,32 +15,38 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      color: var(--muted);
+      color: var(--ink-3);
       text-decoration: none;
       font-size: 14px;
       margin-bottom: 20px;
+      transition: color 0.15s;
     }
-    .settings-back:hover { color: var(--text); }
+    .settings-back:hover { color: var(--ink); }
     .settings-title {
-      font-size: 24px;
-      font-weight: 700;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.025em;
       margin-bottom: 24px;
+      color: var(--ink);
     }
     .settings-section {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
       padding: 28px;
       margin-bottom: 20px;
+      box-shadow: 0 1px 2px rgba(20, 30, 40, 0.03);
     }
     .settings-section h3 {
-      font-size: 16px;
+      font-size: 17px;
       font-weight: 600;
+      letter-spacing: -0.012em;
       margin-bottom: 4px;
+      color: var(--ink);
     }
     .settings-section .section-desc {
-      font-size: 13px;
-      color: var(--muted);
+      font-size: 13.5px;
+      color: var(--ink-3);
       margin-bottom: 20px;
     }
     .s-form-group {
@@ -50,23 +56,26 @@
       display: block;
       font-size: 13px;
       font-weight: 500;
-      margin-bottom: 5px;
-      color: var(--text);
+      margin-bottom: 6px;
+      color: var(--ink-2);
     }
     .s-form-group input[type="text"],
     .s-form-group input[type="email"],
     .s-form-group input[type="password"] {
       width: 100%;
-      padding: 9px 13px;
-      border: 1px solid var(--border);
+      padding: 10px 13px;
+      border: 1px solid var(--line);
       border-radius: 8px;
       font-size: 14px;
       font-family: inherit;
+      background: var(--paper);
+      color: var(--ink);
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
     .s-form-group input:focus {
       outline: none;
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(67,97,238,0.1);
+      box-shadow: 0 0 0 3px var(--accent-tint);
     }
     .s-form-row {
       display: grid;
@@ -77,27 +86,38 @@
       padding: 9px 20px;
       font-size: 14px;
       font-weight: 500;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: white;
+      letter-spacing: -0.005em;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      background: var(--paper);
+      color: var(--ink);
       cursor: pointer;
       font-family: inherit;
-      transition: all 0.15s;
+      transition: transform 0.12s, background 0.15s, border-color 0.15s, color 0.15s;
     }
-    .s-btn:hover { background: var(--bg); }
+    .s-btn:hover { border-color: var(--ink-4); }
     .s-btn-primary {
-      background: var(--accent);
-      color: white;
-      border-color: var(--accent);
+      background: var(--ink);
+      color: var(--bg);
+      border-color: var(--ink);
+      box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.15) inset, 0 1px 2px rgba(0, 0, 0, 0.10);
     }
-    .s-btn-primary:hover { background: var(--accent-hover); }
+    .s-btn-primary:hover {
+      background: var(--accent-deep);
+      border-color: var(--accent-deep);
+      transform: translateY(-1px);
+    }
+    .s-btn-primary:active { transform: translateY(0); }
     .s-btn-danger {
-      background: white;
+      background: var(--paper);
       color: var(--danger);
+      border-color: color-mix(in oklch, var(--danger) 30%, var(--line));
+    }
+    .s-btn-danger:hover {
+      background: color-mix(in oklch, var(--danger) 8%, var(--paper));
       border-color: var(--danger);
     }
-    .s-btn-danger:hover { background: #fef2f2; }
-    .s-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .s-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
     .s-msg {
       padding: 10px 14px;
       border-radius: 8px;
@@ -105,8 +125,8 @@
       margin-bottom: 16px;
       display: none;
     }
-    .s-msg.error { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
-    .s-msg.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+    .s-msg.error { background: oklch(96% 0.03 25); border: 1px solid oklch(85% 0.07 25); color: oklch(45% 0.16 25); }
+    .s-msg.success { background: oklch(96% 0.04 150); border: 1px solid oklch(85% 0.08 150); color: oklch(38% 0.10 150); }
     .s-actions {
       display: flex;
       gap: 10px;
@@ -120,16 +140,17 @@
       align-items: center;
       justify-content: space-between;
       padding: 12px 0;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--line-2);
     }
     .toggle-row:last-child { border-bottom: none; }
     .toggle-label {
       font-size: 14px;
       font-weight: 500;
+      color: var(--ink);
     }
     .toggle-desc {
-      font-size: 12px;
-      color: var(--muted);
+      font-size: 12.5px;
+      color: var(--ink-3);
       margin-top: 2px;
     }
     .toggle-switch {
@@ -147,7 +168,7 @@
       position: absolute;
       cursor: pointer;
       inset: 0;
-      background: #d1d5db;
+      background: var(--ink-4);
       border-radius: 12px;
       transition: 0.2s;
     }
@@ -158,9 +179,10 @@
       height: 18px;
       left: 3px;
       bottom: 3px;
-      background: white;
+      background: var(--paper);
       border-radius: 50%;
       transition: 0.2s;
+      box-shadow: 0 1px 2px rgba(20, 30, 40, 0.18);
     }
     .toggle-switch input:checked + .toggle-slider {
       background: var(--accent);
@@ -179,8 +201,8 @@
     .logo-preview {
       width: 80px;
       height: 80px;
-      border: 2px dashed var(--border);
-      border-radius: 10px;
+      border: 1.5px dashed var(--ink-4);
+      border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -195,7 +217,7 @@
     }
     .logo-preview .placeholder-text {
       font-size: 11px;
-      color: var(--muted);
+      color: var(--ink-3);
       text-align: center;
       padding: 4px;
     }
@@ -211,19 +233,21 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 16px 20px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: var(--bg);
+      padding: 18px 22px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--tint-warm);
       margin-bottom: 16px;
     }
     .plan-name {
       font-size: 18px;
       font-weight: 600;
+      letter-spacing: -0.012em;
+      color: var(--ink);
     }
     .plan-detail {
       font-size: 13px;
-      color: var(--muted);
+      color: var(--ink-3);
       margin-top: 2px;
     }
 
@@ -231,7 +255,7 @@
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.4);
+      background: rgba(20, 30, 40, 0.45);
       display: none;
       align-items: center;
       justify-content: center;
@@ -239,23 +263,26 @@
     }
     .modal-overlay.open { display: flex; }
     .modal-box {
-      background: var(--card);
-      border-radius: 12px;
+      background: var(--paper);
+      border-radius: 16px;
       padding: 32px;
       max-width: 440px;
       width: 90%;
-      box-shadow: 0 16px 48px rgba(0,0,0,0.15);
+      border: 1px solid var(--line);
+      box-shadow: 0 30px 80px -10px rgba(20, 30, 40, 0.30);
     }
     .modal-box h3 {
-      font-size: 18px;
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
       margin-bottom: 8px;
       color: var(--danger);
     }
     .modal-box p {
       font-size: 14px;
-      color: var(--muted);
+      color: var(--ink-3);
       margin-bottom: 20px;
-      line-height: 1.5;
+      line-height: 1.55;
     }
     .modal-actions {
       display: flex;
@@ -264,7 +291,7 @@
     }
     .member-since {
       font-size: 12px;
-      color: var(--muted);
+      color: var(--ink-3);
       margin-top: 16px;
     }
 
@@ -279,7 +306,10 @@
   <!-- Top nav (same as dashboard) -->
   <nav class="top-nav">
     <div class="nav-inner">
-      <a href="/dashboard" class="nav-logo">Penned</a>
+      <a href="/dashboard" class="nav-logo">
+        <span class="brand-mark">P</span>
+        <span class="brand-name">Penned</span>
+      </a>
       <div class="nav-right">
         <span class="plan-badge" id="nav-plan-badge"></span>
         <div class="nav-user" id="nav-user">

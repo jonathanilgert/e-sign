@@ -114,7 +114,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-back-dashboard').addEventListener('click', () => showView('dashboard'));
 
   // Document creation flow
-  loadTemplates();
+  loadLibrary();
   setupSourceToggle();
   setupFieldPlacement();
   setupPageNav();
@@ -143,11 +143,16 @@ function showView(view) {
     state.pdfDoc = null;
     state.fields = [];
     state.templateName = null;
+    state.libraryItemId = null;
+    state.selectedLibraryItem = null;
     state.uploadedPath = null;
     state.savedPdfPath = null;
     state.loadedSavedTemplate = null;
     state.prefillFieldValues = null;
     state.prefillSignature = null;
+    document.querySelectorAll('.library-item.selected').forEach(b => b.classList.remove('selected'));
+    const detail = document.getElementById('library-detail');
+    if (detail) detail.innerHTML = '<div class="library-detail-empty"><p class="hint" style="margin:0">Select a template from the library on the left to use it as the starting point for your document.</p></div>';
     // Reset form
     document.getElementById('doc-title').value = '';
     document.getElementById('recipient-name').value = '';
@@ -426,19 +431,68 @@ function updateCursorColor() {
   cursor.classList.toggle('recipient-mode', role === 'recipient');
 }
 
-// --------------- Templates ---------------
-async function loadTemplates() {
-  const res = await authFetch('/api/templates');
-  const templates = await res.json();
-  const select = document.getElementById('template-select');
-  select.innerHTML = '';
-  templates.forEach(t => {
-    const opt = document.createElement('option');
-    opt.value = t.name;
-    opt.textContent = t.name.replace('.pdf', '').replace(/-/g, ' ');
-    select.appendChild(opt);
+// --------------- Library (curated public templates) ---------------
+async function loadLibrary() {
+  const res = await authFetch('/api/library');
+  const data = await res.json();
+  const sidebar = document.getElementById('library-sidebar');
+  if (!sidebar) return;
+
+  state.library = data;
+  state.libraryItemsById = {};
+  const cats = data.categories || [];
+  if (cats.length === 0) {
+    sidebar.innerHTML = '<div class="library-empty">No templates available yet.</div>';
+    return;
+  }
+
+  let html = '';
+  for (const cat of cats) {
+    html += `<div class="library-category">
+      <div class="library-category-name">${escapeHtml(cat.name)}</div>`;
+    for (const item of (cat.items || [])) {
+      state.libraryItemsById[item.id] = item;
+      const tag = item.province ? `<span class="library-province">${escapeHtml(item.province)}</span>` : '';
+      html += `<button class="library-item" data-item-id="${escapeHtml(item.id)}" type="button">
+        <div class="library-item-main">
+          <div class="library-item-name">${escapeHtml(item.name)}</div>
+          ${item.subtitle ? `<div class="library-item-subtitle">${escapeHtml(item.subtitle)}</div>` : ''}
+        </div>
+        ${tag}
+      </button>`;
+    }
+    html += `</div>`;
+  }
+  sidebar.innerHTML = html;
+
+  sidebar.querySelectorAll('.library-item').forEach(btn => {
+    btn.addEventListener('click', () => selectLibraryItem(btn.dataset.itemId));
   });
 }
+
+function selectLibraryItem(itemId) {
+  const item = state.libraryItemsById[itemId];
+  if (!item) return;
+  state.selectedLibraryItem = item;
+  document.querySelectorAll('.library-item').forEach(b => b.classList.toggle('selected', b.dataset.itemId === itemId));
+
+  const detail = document.getElementById('library-detail');
+  if (detail) {
+    detail.innerHTML = `
+      <div class="library-detail-card">
+        <div class="library-detail-name">${escapeHtml(item.name)}</div>
+        ${item.subtitle ? `<div class="library-detail-subtitle">${escapeHtml(item.subtitle)}</div>` : ''}
+        ${item.description ? `<p class="library-detail-desc">${escapeHtml(item.description)}</p>` : ''}
+        ${item.source ? `<a class="library-detail-source" href="${escapeAttr(item.source)}" target="_blank" rel="noopener">View official source &rarr;</a>` : ''}
+      </div>
+    `;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
 
 function setupSourceToggle() {
   const btnTemplate = document.getElementById('btn-template');
@@ -510,16 +564,18 @@ async function prepareDocument() {
       state.prefillSignature = saved.sender_signature || null;
     }
 
-    if (saved.template_name) {
-      state.templateName = saved.template_name;
-      pdfUrl = `/api/templates/${encodeURIComponent(saved.template_name)}`;
-    } else if (saved.uploaded_pdf_path) {
+    if (saved.uploaded_pdf_path) {
       state.savedPdfPath = saved.uploaded_pdf_path;
-      pdfUrl = `/uploads/${saved.uploaded_pdf_path.split(/[/\\]/).pop()}`;
+      pdfUrl = `/api/saved-template-pdf/${encodeURIComponent(saved.id)}`;
+    } else if (saved.template_name) {
+      // Legacy reference (pre-library) — surface clearly
+      showToast('This saved template references an old file that is no longer available. Please re-create it from the library.');
+      return;
     }
   } else if (isTemplate) {
-    state.templateName = document.getElementById('template-select').value;
-    pdfUrl = `/api/templates/${encodeURIComponent(state.templateName)}`;
+    if (!state.selectedLibraryItem) { showToast('Please select a template from the library'); return; }
+    state.libraryItemId = state.selectedLibraryItem.id;
+    pdfUrl = `/api/library/${encodeURIComponent(state.libraryItemId)}/pdf`;
     state.fields = [];
   } else {
     const fileInput = document.getElementById('pdf-upload');
@@ -533,8 +589,14 @@ async function prepareDocument() {
     state.fields = [];
   }
 
-  const loadingTask = pdfjsLib.getDocument(pdfUrl);
-  state.pdfDoc = await loadingTask.promise;
+  try {
+    const loadingTask = pdfjsLib.getDocument({ url: pdfUrl, httpHeaders: getAuthHeaders() });
+    state.pdfDoc = await loadingTask.promise;
+  } catch (err) {
+    showToast('Could not load PDF. Please try again.');
+    console.error('PDF load failed:', err);
+    return;
+  }
   state.totalPages = state.pdfDoc.numPages;
   state.currentPage = 1;
 
@@ -1006,7 +1068,7 @@ async function finishFieldPlacement() {
 
   const body = {
     title: state.docInfo.title,
-    templateName: state.templateName || undefined,
+    libraryItemId: state.libraryItemId || undefined,
     pdfSource: state.uploadedPath || undefined,
     savedTemplatePdf: state.savedPdfPath || undefined,
     senderName: state.docInfo.senderName,

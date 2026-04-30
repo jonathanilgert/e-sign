@@ -4,12 +4,36 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign Document - Penned</title>
-  <link rel="stylesheet" href="/style.css?v=4">
+  <link rel="stylesheet" href="/style.css?v=9">
+  <style>
+    header.sign-page-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px 30px;
+    }
+    header.sign-page-header .brand-mark { width: 30px; height: 30px; border-radius: 8px; font-size: 16px; }
+    header.sign-page-header .logo {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.012em;
+      color: var(--ink);
+      line-height: 1.1;
+    }
+    header.sign-page-header .tagline {
+      font-size: 13px;
+      color: var(--ink-3);
+      margin-top: 2px;
+    }
+  </style>
 </head>
 <body>
-  <header>
-    <div class="logo">Penned</div>
-    <p class="tagline">Review and sign your document</p>
+  <header class="sign-page-header">
+    <span class="brand-mark">P</span>
+    <div>
+      <div class="logo">Penned</div>
+      <p class="tagline">Review and sign your document</p>
+    </div>
   </header>
 
   <main>
@@ -20,7 +44,7 @@
       </div>
 
       <!-- PDF Preview -->
-      <div id="pdf-preview-container" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:24px;background:#e5e5e5;">
+      <div id="pdf-preview-container" style="border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:24px;background:var(--line-2);">
       </div>
       <div class="page-nav">
         <button class="btn btn-sm" id="btn-prev">Previous</button>
@@ -78,6 +102,37 @@
     </section>
   </main>
 
+  <!-- Final review modal (sender only — last check before recipient is emailed) -->
+  <div class="review-modal-overlay" id="review-modal">
+    <div class="review-modal">
+      <h3>One last look</h3>
+      <p class="review-modal-sub">Once you confirm, this document goes straight to the recipient's inbox. Take a moment to verify everything is correct.</p>
+      <div class="review-row">
+        <div class="review-row-label">Document</div>
+        <div class="review-row-value" id="review-doc-title"></div>
+      </div>
+      <div class="review-row">
+        <div class="review-row-label">From</div>
+        <div class="review-row-value" id="review-sender"></div>
+      </div>
+      <div class="review-row">
+        <div class="review-row-label">To</div>
+        <div class="review-row-value"><strong id="review-recipient-name"></strong></div>
+      </div>
+      <div class="review-row">
+        <div class="review-row-label">Email</div>
+        <div class="review-row-value"><strong id="review-recipient-email"></strong></div>
+      </div>
+      <div class="review-recipient-callout">
+        Double-check the recipient's email address above &mdash; the document will be sent there. A typo means the wrong person could open the link.
+      </div>
+      <div class="review-modal-actions">
+        <button class="btn" id="review-cancel">Go back</button>
+        <button class="btn btn-primary" id="review-confirm">Confirm &amp; Send</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -87,7 +142,12 @@
     let _signCsrf = null;
     async function getSignCsrf() {
       if (_signCsrf) return _signCsrf;
-      try { const r = await fetch('/api/csrf-token'); _signCsrf = (await r.json()).token; } catch (e) {}
+      // Send the JWT if the user is logged in so the CSRF token is tied to their session
+      // (jti), not the anonymous-IP fallback. Otherwise, authenticated POSTs like
+      // /api/saved-templates fail CSRF validation since the server reads sessionId from JWT.
+      const token = localStorage.getItem('esign_token');
+      const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+      try { const r = await fetch('/api/csrf-token', { headers }); _signCsrf = (await r.json()).token; } catch (e) {}
       return _signCsrf || '';
     }
     function getAuthHeaders() {
@@ -268,9 +328,56 @@
             input.style.width = '140px';
           }
           overlay.appendChild(input);
+
+          // Sender can resize their own text fields directly here without going back to design.
+          // Recipients can't — sizes are locked once the sender sends.
+          if (role === 'sender' && canvas) {
+            const handle = document.createElement('div');
+            handle.className = 'inline-resize-handle';
+            handle.title = 'Drag to resize this field';
+            overlay.appendChild(handle);
+            setupInlineResize(handle, input, field, container);
+          }
         }
 
         container.appendChild(overlay);
+      });
+    }
+
+    // Drag-to-resize for sender text fields on the signing page. Updates field.width/height
+    // (in PDF units) so the server draws text into the new dimensions.
+    function setupInlineResize(handle, input, field, container) {
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startInputW = input.offsetWidth;
+        const startInputH = input.offsetHeight;
+
+        const canvas = container.querySelector('canvas');
+        const rect = canvas.getBoundingClientRect();
+        // Server renders the underlying PDF at scale 1.5 (see drawFieldText callers); the
+        // canvas is then scaled to fit the page width. Convert pixel deltas to PDF units
+        // through both factors.
+        const displayScale = rect.width / canvas.width;
+        const pdfRenderScale = 1.5;
+
+        function onMove(ev) {
+          const newW = Math.max(40, startInputW + (ev.clientX - startX));
+          const newH = Math.max(20, startInputH + (ev.clientY - startY));
+          input.style.width = newW + 'px';
+          field.width = newW / (pdfRenderScale * displayScale);
+          field.height = newH / (pdfRenderScale * displayScale);
+        }
+
+        function onUp() {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        }
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
       });
     }
 
@@ -390,6 +497,15 @@
         return;
       }
 
+      // Sender's final review: confirm recipient name + email before sending.
+      // Skip for the recipient flow (they're not "sending" anywhere).
+      if (role === 'sender' && !window._reviewConfirmed) {
+        if (!validateBeforeReview()) return;
+        showFinalReviewModal();
+        return;
+      }
+      window._reviewConfirmed = false;
+
       // Save any currently visible input values before collecting
       document.querySelectorAll('.inline-field-overlay input').forEach(input => {
         if (input.id && input.id.startsWith('input-')) {
@@ -439,11 +555,15 @@
 
       try {
         const endpoint = role === 'sender' ? 'sign-sender' : 'sign-recipient';
-        const csrf = await getSignCsrf();
+        await getSignCsrf();
+        // Pass auth header (when present) so CSRF validation uses the JWT jti consistently
+        // with how the token was generated above.
+        // Senders may have resized their fields here; recipients can't, so don't send.
+        const updatedFields = role === 'sender' ? doc.fields : undefined;
         const res = await fetch(`/api/documents/${docId}/${endpoint}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-          body: JSON.stringify({ fieldValues, signatureDataUrl, attestation: true })
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({ fieldValues, signatureDataUrl, attestation: true, fields: updatedFields })
         });
 
         const data = await res.json();
@@ -454,13 +574,16 @@
             if (confirm('Document sent! Would you like to save this as a reusable template?\n\nThis saves your field layout, filled-in details, and signature so you can send to new tenants with one click.')) {
               const templateName = prompt('Name this template:', doc.title || 'My Lease Template');
               if (templateName) {
-                await fetch('/api/saved-templates', {
+                // Pass the doc's PDF path so the server snapshots the PDF into templates/saved/.
+                // Without this, the row inserts but has no PDF and "Use" later would fail.
+                const saveRes = await fetch('/api/saved-templates', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
                   body: JSON.stringify({
                     name: templateName,
                     stage: 'ready_to_send',
                     templateName: doc.template_name || null,
+                    uploadedPdfPath: doc.pdf_path || null,
                     fields: doc.fields,
                     senderName: doc.sender_name,
                     senderEmail: doc.sender_email,
@@ -469,6 +592,11 @@
                     docTitle: doc.title
                   })
                 });
+                if (!saveRes.ok) {
+                  showToast('Could not save template. Document was still sent.');
+                } else {
+                  showToast('Template saved! You can reuse it from the dashboard.');
+                }
               }
             }
             showWaitingState();
@@ -486,6 +614,60 @@
         btn.textContent = 'Sign & Submit';
       }
     }
+
+    // --------------- Final review modal (sender only) ---------------
+    // Run the same input/signature validation submitSigning would, before showing
+    // the modal — so we don't pop a confirm dialog only to fail validation after.
+    function validateBeforeReview() {
+      // Save any currently visible input values
+      document.querySelectorAll('.inline-field-overlay input').forEach(input => {
+        if (input.id && input.id.startsWith('input-')) savedFieldValues[input.id] = input.value;
+      });
+      const myFields = doc.fields.filter(f => f.role === role);
+      for (const field of myFields) {
+        if (field.type === 'signature') continue;
+        const inputId = `input-${field.id}`;
+        const input = document.getElementById(inputId);
+        const value = input ? input.value : (savedFieldValues[inputId] || '');
+        if (!value.trim()) {
+          if (field.page + 1 !== currentPage) renderPreviewPage(field.page + 1);
+          showToast(`Please fill in: ${field.label} (Page ${field.page + 1})`);
+          const tgt = document.getElementById(inputId);
+          if (tgt) tgt.focus();
+          return false;
+        }
+      }
+      const hasSig = myFields.some(f => f.type === 'signature');
+      if (hasSig) {
+        const imageData = sigCtx.getImageData(0, 0, sigCanvas.width, sigCanvas.height);
+        const isBlank = !imageData.data.some((val, i) => i % 4 === 3 && val > 0);
+        if (isBlank) { showToast('Please draw your signature'); return false; }
+      }
+      return true;
+    }
+
+    function showFinalReviewModal() {
+      document.getElementById('review-doc-title').textContent = doc.title || 'Untitled Document';
+      document.getElementById('review-sender').textContent = `${doc.sender_name} <${doc.sender_email}>`;
+      document.getElementById('review-recipient-name').textContent = doc.recipient_name || '—';
+      document.getElementById('review-recipient-email').textContent = doc.recipient_email || '—';
+      document.getElementById('review-modal').classList.add('open');
+    }
+
+    function hideFinalReviewModal() {
+      document.getElementById('review-modal').classList.remove('open');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const cancel = document.getElementById('review-cancel');
+      const confirmBtn = document.getElementById('review-confirm');
+      if (cancel) cancel.addEventListener('click', hideFinalReviewModal);
+      if (confirmBtn) confirmBtn.addEventListener('click', () => {
+        hideFinalReviewModal();
+        window._reviewConfirmed = true;
+        submitSigning();
+      });
+    });
 
     // --------------- States ---------------
     function showExpiredState() {

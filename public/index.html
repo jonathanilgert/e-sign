@@ -4,13 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Penned</title>
-  <link rel="stylesheet" href="/style.css?v=7">
+  <link rel="stylesheet" href="/style.css?v=9">
 </head>
 <body>
   <!-- Top nav -->
   <nav class="top-nav">
     <div class="nav-inner">
-      <a href="/dashboard" class="nav-logo">Penned</a>
+      <a href="/dashboard" class="nav-logo">
+        <span class="brand-mark">P</span>
+        <span class="brand-name">Penned</span>
+      </a>
       <div class="nav-right">
         <span class="plan-badge" id="nav-plan-badge"></span>
         <div class="nav-user" id="nav-user">
@@ -98,23 +101,29 @@
         <div class="form-group">
           <label>Document Source</label>
           <div class="source-toggle">
-            <button class="btn btn-sm active" id="btn-template">Use Template</button>
-            <button class="btn btn-sm" id="btn-upload">Upload PDF</button>
+            <button class="btn btn-sm active" id="btn-upload">Upload PDF</button>
+            <button class="btn btn-sm" id="btn-template">Use Template</button>
             <button class="btn btn-sm" id="btn-saved">Saved Template</button>
           </div>
         </div>
 
-        <div id="template-section">
-          <div class="form-group">
-            <label for="template-select">Template</label>
-            <select id="template-select"></select>
-          </div>
-        </div>
-
-        <div id="upload-section" style="display:none">
+        <div id="upload-section">
           <div class="form-group">
             <label for="pdf-upload">Upload PDF</label>
             <input type="file" id="pdf-upload" accept=".pdf">
+          </div>
+        </div>
+
+        <div id="template-section" style="display:none">
+          <div class="library-layout">
+            <aside class="library-sidebar" id="library-sidebar">
+              <div class="library-empty">Loading library…</div>
+            </aside>
+            <div class="library-detail" id="library-detail">
+              <div class="library-detail-empty">
+                <p class="hint" style="margin:0">Select a template from the library on the left to use it as the starting point for your document.</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -153,6 +162,14 @@
             <label for="recipient-email">Recipient Email</label>
             <input type="email" id="recipient-email" placeholder="tenant@example.com">
           </div>
+        </div>
+
+        <div class="review-note" id="review-note-pre">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-3z"/>
+            <path d="M9 12l2 2 4-4"/>
+          </svg>
+          <span>You'll be able to review the document, your details, and the recipient's name and email before anything is sent.</span>
         </div>
 
         <button class="btn btn-primary" id="btn-prepare">Prepare Document</button>
@@ -217,6 +234,6 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   </script>
   <div class="target-cursor" id="target-cursor"></div>
-  <script src="/app.js?v=7"></script>
+  <script src="/app.js?v=9"></script>
 </body>
 </html>

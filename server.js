@@ -168,6 +168,30 @@ if (!fs.existsSync(savedTemplatesDir)) fs.mkdirSync(savedTemplatesDir, { recursi
 const logosDir = path.join(__dirname, 'uploads', 'logos');
 if (!fs.existsSync(logosDir)) fs.mkdirSync(logosDir, { recursive: true });
 
+// Privacy: scope saved_templates to the owning user.
+try { db.exec(`ALTER TABLE saved_templates ADD COLUMN user_id TEXT`); } catch (e) { /* exists */ }
+
+// Curated public template library (manifest + PDFs in /library)
+const libraryDir = path.join(__dirname, 'library');
+let libraryManifest = { categories: [] };
+let libraryItemsById = {};
+function loadLibraryManifest() {
+  try {
+    const raw = fs.readFileSync(path.join(libraryDir, 'manifest.json'), 'utf8');
+    libraryManifest = JSON.parse(raw);
+    libraryItemsById = {};
+    for (const cat of libraryManifest.categories || []) {
+      for (const item of cat.items || []) {
+        libraryItemsById[item.id] = { ...item, categoryId: cat.id, categoryName: cat.name };
+      }
+    }
+    console.log(`[LIBRARY] Loaded ${Object.keys(libraryItemsById).length} items in ${libraryManifest.categories.length} categories`);
+  } catch (e) {
+    console.warn('[LIBRARY] No manifest found at', libraryDir, '—', e.message);
+  }
+}
+loadLibraryManifest();
+
 // --------------- Stripe Webhook (must be before JSON body parser) ---------------
 app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), (req, res) => {
   if (!stripe) return res.status(400).send('Stripe not configured');
@@ -283,11 +307,11 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://js.stripe.com"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       imgSrc: ["'self'", "data:", "blob:"],
       connectSrc: ["'self'", "https://api.stripe.com"],
       frameSrc: ["https://js.stripe.com", "https://checkout.stripe.com"],
-      fontSrc: ["'self'"]
+      fontSrc: ["'self'", "https://fonts.gstatic.com"]
     }
   },
   crossOriginEmbedderPolicy: false
@@ -1091,21 +1115,45 @@ app.use('/api', csrfProtection);
 
 // --------------- API Routes ---------------
 
-// List templates
-app.get('/api/templates', (req, res) => {
-  const dir = path.join(__dirname, 'templates');
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.pdf'));
-  res.json(files.map(f => ({ name: f, path: `/api/templates/${encodeURIComponent(f)}` })));
+// Curated public template library
+app.get('/api/library', (req, res) => {
+  // Return manifest minus internal file paths — clients only need IDs to request PDFs.
+  const safe = {
+    version: libraryManifest.version,
+    categories: (libraryManifest.categories || []).map(cat => ({
+      id: cat.id,
+      name: cat.name,
+      description: cat.description || '',
+      items: (cat.items || []).map(it => ({
+        id: it.id,
+        name: it.name,
+        subtitle: it.subtitle || '',
+        province: it.province || '',
+        description: it.description || '',
+        source: it.source || ''
+      }))
+    }))
+  };
+  res.json(safe);
 });
 
-// Serve template PDF (checks templates/ then templates/saved/)
-app.get('/api/templates/:name', (req, res) => {
-  let filePath = path.join(__dirname, 'templates', req.params.name);
-  if (!fs.existsSync(filePath)) {
-    filePath = path.join(__dirname, 'templates', 'saved', req.params.name);
-  }
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+app.get('/api/library/:itemId/pdf', (req, res) => {
+  const item = libraryItemsById[req.params.itemId];
+  if (!item) return res.status(404).json({ error: 'Library item not found' });
+  const filePath = path.join(libraryDir, item.file);
+  // Defence-in-depth: ensure resolved path is inside libraryDir.
+  if (!path.resolve(filePath).startsWith(path.resolve(libraryDir))) return res.status(400).json({ error: 'Invalid path' });
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'PDF missing' });
   res.sendFile(filePath);
+});
+
+// Serve user-saved template PDFs (per-user; ownership enforced below).
+app.get('/api/saved-template-pdf/:id', (req, res) => {
+  const t = db.prepare('SELECT user_id, uploaded_pdf_path FROM saved_templates WHERE id = ?').get(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+  if (t.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+  if (!t.uploaded_pdf_path || !fs.existsSync(t.uploaded_pdf_path)) return res.status(404).json({ error: 'PDF missing' });
+  res.sendFile(path.resolve(t.uploaded_pdf_path));
 });
 
 // --------------- Billing Helpers ---------------
@@ -1262,7 +1310,7 @@ app.post('/api/documents', docSendLimiter, (req, res) => {
   const recipientName = sanitize(req.body.recipientName || '');
   const senderEmail = (req.body.senderEmail || '').trim().toLowerCase();
   const recipientEmail = (req.body.recipientEmail || '').trim().toLowerCase();
-  const { pdfSource, templateName, savedTemplatePdf, fields } = req.body;
+  const { pdfSource, templateName, libraryItemId, savedTemplatePdf, fields } = req.body;
 
   // Validate inputs
   if (title.length > 300) return res.status(400).json({ error: 'Title is too long' });
@@ -1286,10 +1334,17 @@ app.post('/api/documents', docSendLimiter, (req, res) => {
   const id = uuidv4();
 
   let pdfPath;
-  if (templateName) {
-    // Check templates/ first, then templates/saved/
-    let src = path.join(__dirname, 'templates', templateName);
-    if (!fs.existsSync(src)) src = path.join(__dirname, 'templates', 'saved', templateName);
+  if (libraryItemId) {
+    const item = libraryItemsById[libraryItemId];
+    if (!item) return res.status(400).json({ error: 'Unknown library template' });
+    const src = path.join(libraryDir, item.file);
+    if (!fs.existsSync(src)) return res.status(400).json({ error: 'Library PDF missing' });
+    pdfPath = path.join(__dirname, 'uploads', `${id}.pdf`);
+    fs.copyFileSync(src, pdfPath);
+  } else if (templateName) {
+    // Backwards-compat: only allowed for files inside templates/saved/ (per-user)
+    const src = path.join(__dirname, 'templates', 'saved', path.basename(templateName));
+    if (!fs.existsSync(src)) return res.status(400).json({ error: 'Template not found' });
     pdfPath = path.join(__dirname, 'uploads', `${id}.pdf`);
     fs.copyFileSync(src, pdfPath);
   } else if (savedTemplatePdf) {
@@ -1370,7 +1425,7 @@ app.post('/api/documents/:id/sign-sender', async (req, res) => {
     if (!doc) return res.status(404).json({ error: 'Document not found' });
     if (doc.status !== 'draft') return res.status(400).json({ error: 'Document has already been signed by sender' });
 
-    const { fieldValues, signatureDataUrl, attestation } = req.body;
+    const { fieldValues, signatureDataUrl, attestation, fields: clientFields } = req.body;
     if (!attestation) return res.status(400).json({ error: 'Attestation required' });
 
     // Build overlay PDF with sender fields, then stamp onto original
@@ -1386,6 +1441,23 @@ app.post('/api/documents/:id/sign-sender', async (req, res) => {
     }
 
     const fields = JSON.parse(doc.fields || '[]');
+
+    // Sender may resize their own text fields on the signing page. Merge in only the
+    // dimensions (width/height) for fields the sender owns — never type/role/page/x/y/id/label.
+    if (Array.isArray(clientFields)) {
+      const byId = new Map(clientFields.map(f => [f && f.id, f]));
+      for (const f of fields) {
+        if (f.role !== 'sender') continue;
+        const incoming = byId.get(f.id);
+        if (!incoming) continue;
+        if (typeof incoming.width === 'number' && incoming.width >= 20 && incoming.width <= 600) {
+          f.width = incoming.width;
+        }
+        if (typeof incoming.height === 'number' && incoming.height >= 10 && incoming.height <= 400) {
+          f.height = incoming.height;
+        }
+      }
+    }
     console.log('[SENDER SIGN] fieldValues:', JSON.stringify(fieldValues));
     console.log('[SENDER SIGN] has signature:', !!signatureDataUrl);
     for (const field of fields) {
@@ -1574,24 +1646,25 @@ app.post('/api/documents/:id/remind', requireAuth, async (req, res) => {
 
 // --------------- Saved Templates ---------------
 
-// List saved templates
+// List saved templates (scoped to current user)
 app.get('/api/saved-templates', (req, res) => {
   const templates = db.prepare(
-    'SELECT id, name, stage, template_name, doc_title, created_at, updated_at FROM saved_templates ORDER BY updated_at DESC'
-  ).all();
+    'SELECT id, name, stage, template_name, doc_title, created_at, updated_at FROM saved_templates WHERE user_id = ? ORDER BY updated_at DESC'
+  ).all(req.user.id);
   res.json(templates);
 });
 
-// Get single saved template (full data)
+// Get single saved template (full data) — owner only
 app.get('/api/saved-templates/:id', (req, res) => {
   const t = db.prepare('SELECT * FROM saved_templates WHERE id = ?').get(req.params.id);
   if (!t) return res.status(404).json({ error: 'Not found' });
+  if (t.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
   t.fields = JSON.parse(t.fields || '[]');
   t.sender_field_values = t.sender_field_values ? JSON.parse(t.sender_field_values) : null;
   res.json(t);
 });
 
-// Save a template
+// Save a template — owned by current user
 app.post('/api/saved-templates', (req, res) => {
   const { name, stage, templateName, uploadedPdfPath, fields, senderName, senderEmail, senderFieldValues, senderSignature, docTitle } = req.body;
   const id = uuidv4();
@@ -1604,10 +1677,10 @@ app.post('/api/saved-templates', (req, res) => {
   }
 
   db.prepare(`
-    INSERT INTO saved_templates (id, name, stage, template_name, uploaded_pdf_path, fields, sender_name, sender_email, sender_field_values, sender_signature, doc_title)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO saved_templates (id, user_id, name, stage, template_name, uploaded_pdf_path, fields, sender_name, sender_email, sender_field_values, sender_signature, doc_title)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    id, name, stage,
+    id, req.user.id, name, stage,
     templateName || null,
     savedPdfPath || null,
     JSON.stringify(fields || []),
@@ -1620,10 +1693,11 @@ app.post('/api/saved-templates', (req, res) => {
   res.json({ id, name, stage });
 });
 
-// Update a saved template (e.g. upgrade Stage 1 to Stage 2)
+// Update a saved template — owner only
 app.put('/api/saved-templates/:id', (req, res) => {
   const t = db.prepare('SELECT * FROM saved_templates WHERE id = ?').get(req.params.id);
   if (!t) return res.status(404).json({ error: 'Not found' });
+  if (t.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
 
   const { name, stage, senderName, senderEmail, senderFieldValues, senderSignature, docTitle, fields } = req.body;
   db.prepare(`
@@ -1651,10 +1725,11 @@ app.put('/api/saved-templates/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// Delete a saved template
+// Delete a saved template — owner only
 app.delete('/api/saved-templates/:id', (req, res) => {
   const t = db.prepare('SELECT * FROM saved_templates WHERE id = ?').get(req.params.id);
   if (!t) return res.status(404).json({ error: 'Not found' });
+  if (t.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
 
   try { if (t.uploaded_pdf_path && fs.existsSync(t.uploaded_pdf_path)) fs.unlinkSync(t.uploaded_pdf_path); } catch (e) { /* ignore */ }
   db.prepare('DELETE FROM saved_templates WHERE id = ?').run(req.params.id);
