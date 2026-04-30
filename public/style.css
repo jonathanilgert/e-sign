@@ -1344,7 +1344,8 @@ input:focus, select:focus, textarea:focus {
   background: var(--paper);
   box-shadow: 0 0 0 2px var(--accent-tint) inset;
 }
-.field-marker.editable .remove-field {
+.field-marker.editable .remove-field,
+.field-marker.sig-field .remove-field {
   position: absolute;
   top: -8px;
   right: -8px;
@@ -1361,6 +1362,31 @@ input:focus, select:focus, textarea:focus {
   cursor: pointer;
   z-index: 12;
 }
+
+/* Drag handle — mirror of the × at top-left, only on markers whose interior is
+   occupied (editable inputs, signature placeholders) so they can still be moved. */
+.field-marker .move-handle {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 1px solid currentColor;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  cursor: grab;
+  z-index: 12;
+  user-select: none;
+  opacity: 0.65;
+  transition: opacity 0.1s;
+}
+.field-marker:hover .move-handle { opacity: 1; }
+.field-marker .move-handle:active { cursor: grabbing; }
 
 /* Sender's signature field marker — "Click to sign" placeholder */
 .field-marker.sig-field {

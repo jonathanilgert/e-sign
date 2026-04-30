@@ -693,7 +693,8 @@ function setupFieldPlacement() {
     const typeLabels = { text: 'Text', name: 'Full Name', date: 'Date', initials: 'Initials', signature: 'Signature' };
     const label = customLabel || typeLabels[type];
 
-    const fieldW = type === 'signature' ? 180 : (type === 'initials' ? 50 : 120);
+    // Default field widths: roomy enough for typical content, then resize as needed.
+    const fieldW = type === 'signature' ? 240 : (type === 'initials' ? 100 : 240);
     const fieldH = type === 'signature' ? 50 : (type === 'initials' ? 18 : 20);
 
     const clickX = e.clientX - rect.left;
@@ -797,6 +798,17 @@ function renderFieldMarkers() {
     removeBtn.dataset.id = field.id;
     removeBtn.innerHTML = '&times;';
     marker.appendChild(removeBtn);
+
+    // For markers whose interior is occupied by an input or signature placeholder,
+    // expose an explicit drag handle so the field can still be repositioned after
+    // values have been typed in.
+    if (isEditableForSender || isSenderSigField) {
+      const moveHandle = document.createElement('span');
+      moveHandle.className = 'move-handle';
+      moveHandle.title = 'Drag to move this field';
+      moveHandle.innerHTML = '&#10303;'; // ⠿ braille pattern dots-12345678 (looks like a grip)
+      marker.appendChild(moveHandle);
+    }
 
     if (isEditableForSender) {
       const input = document.createElement('input');
