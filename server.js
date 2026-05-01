@@ -1623,12 +1623,13 @@ app.post('/api/documents/:id/sign-recipient', async (req, res) => {
   }
 });
 
-// Delete a document (owner only, not if completed)
+// Delete a document (owner only). Completed documents can be deleted too —
+// the UI shows a stronger confirmation for those. Deletion is permanent and
+// removes the underlying PDF files from disk.
 app.delete('/api/documents/:id', (req, res) => {
   const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Document not found' });
   if (doc.user_id && doc.user_id !== req.user.id) return res.status(403).json({ error: 'Access denied' });
-  if (doc.status === 'completed') return res.status(400).json({ error: 'Completed documents cannot be deleted' });
 
   // Delete associated PDF files
   try { if (doc.pdf_path && fs.existsSync(doc.pdf_path)) fs.unlinkSync(doc.pdf_path); } catch (e) { /* ignore */ }

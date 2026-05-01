@@ -349,7 +349,7 @@ function bindDocActions() {
     const action = btn.dataset.action;
     const docId = btn.dataset.docId;
     if (action === 'delete') {
-      deleteDocument(docId, btn.dataset.docTitle || '');
+      deleteDocument(docId, btn.dataset.docTitle || '', btn.dataset.docStatus || '');
     } else if (action === 'remind') {
       remindRecipient(docId);
     }
@@ -416,9 +416,7 @@ function renderDocTable(docs) {
     if (d.status === 'completed') {
       actions += `<a href="/api/documents/${d.id}/pdf" class="btn btn-sm btn-success" download>Download</a>`;
     }
-    if (d.status !== 'completed') {
-      actions += `<button class="btn btn-sm btn-delete" data-action="delete" data-doc-id="${d.id}" data-doc-title="${escapeAttr(d.title || '')}">&#10005;</button>`;
-    }
+    actions += `<button class="btn btn-sm btn-delete" data-action="delete" data-doc-id="${d.id}" data-doc-title="${escapeAttr(d.title || '')}" data-doc-status="${d.status}">&#10005;</button>`;
 
     return `<div class="doc-table-row${d.status === 'expired' ? ' doc-expired' : ''}">
       <div>
@@ -439,8 +437,13 @@ function renderDocTable(docs) {
 }
 
 // --------------- Delete Document ---------------
-async function deleteDocument(id, title) {
-  if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+async function deleteDocument(id, title, status) {
+  // Stronger warning for fully signed/completed documents — the user is about to
+  // permanently delete a legally signed PDF (and lose the file from disk).
+  const prompt = status === 'completed'
+    ? `Permanently delete the signed document "${title}"?\n\nThis is a fully executed agreement. Once deleted, the signed PDF will be removed from your dashboard and from our server. This cannot be undone.\n\nMake sure you've downloaded a copy if you need to keep it.`
+    : `Delete "${title}"? This cannot be undone.`;
+  if (!confirm(prompt)) return;
   try {
     const res = await authFetch(`/api/documents/${id}`, { method: 'DELETE' });
     if (res.ok) {
