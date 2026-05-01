@@ -168,6 +168,16 @@ if (!fs.existsSync(savedTemplatesDir)) fs.mkdirSync(savedTemplatesDir, { recursi
 const logosDir = path.join(__dirname, 'uploads', 'logos');
 if (!fs.existsSync(logosDir)) fs.mkdirSync(logosDir, { recursive: true });
 
+// Ensure signed-documents directory exists. qpdf writes finalized PDFs here when
+// the recipient completes signing — without it, the recipient sign step fails with
+// "No such file or directory" on a fresh deploy (the dir is gitignored).
+const signedDir = path.join(__dirname, 'signed');
+if (!fs.existsSync(signedDir)) fs.mkdirSync(signedDir, { recursive: true });
+
+// Same reason for uploads/ — gitignored, but needed for new document PDFs.
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
 // Privacy: scope saved_templates to the owning user.
 try { db.exec(`ALTER TABLE saved_templates ADD COLUMN user_id TEXT`); } catch (e) { /* exists */ }
 
