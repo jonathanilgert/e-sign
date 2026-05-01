@@ -267,8 +267,10 @@
 
     function renderInlineFields(pageNum) {
       const container = document.getElementById('pdf-preview-container');
-      // Save current input values before removing overlays
-      container.querySelectorAll('.inline-field-overlay input').forEach(input => {
+      // Save current input values before removing overlays. Selector must include textareas:
+      // text/name fields are rendered as <textarea> (see renderInlineFields below) and were
+      // being missed, wiping recipient input on page change.
+      container.querySelectorAll('.inline-field-overlay input, .inline-field-overlay textarea').forEach(input => {
         if (input.id && input.id.startsWith('input-')) {
           savedFieldValues[input.id] = input.value;
         }
@@ -517,8 +519,9 @@
       }
       window._reviewConfirmed = false;
 
-      // Save any currently visible input values before collecting
-      document.querySelectorAll('.inline-field-overlay input').forEach(input => {
+      // Save any currently visible input values before collecting (textareas included —
+      // text/name fields are rendered as <textarea>).
+      document.querySelectorAll('.inline-field-overlay input, .inline-field-overlay textarea').forEach(input => {
         if (input.id && input.id.startsWith('input-')) {
           savedFieldValues[input.id] = input.value;
         }
@@ -630,8 +633,8 @@
     // Run the same input/signature validation submitSigning would, before showing
     // the modal — so we don't pop a confirm dialog only to fail validation after.
     function validateBeforeReview() {
-      // Save any currently visible input values
-      document.querySelectorAll('.inline-field-overlay input').forEach(input => {
+      // Save any currently visible input values (include textareas — text/name fields).
+      document.querySelectorAll('.inline-field-overlay input, .inline-field-overlay textarea').forEach(input => {
         if (input.id && input.id.startsWith('input-')) savedFieldValues[input.id] = input.value;
       });
       const myFields = doc.fields.filter(f => f.role === role);
