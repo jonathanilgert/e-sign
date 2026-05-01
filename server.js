@@ -32,6 +32,17 @@ const DOC_EXPIRY_DAYS = 30;
 const REMINDER_DAYS = [3, 7, 25]; // days after sending to send reminders
 
 // --------------- Config ---------------
+// JWT_SECRET MUST be set in .env. Falling back to a random in-memory value
+// silently invalidates every active JWT and CSRF token on restart, which
+// presents to users as random "Invalid or missing CSRF token" / login-loop
+// failures. In production we'd rather refuse to boot than serve broken auth.
+if (!process.env.JWT_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL: JWT_SECRET is not set. Add it to .env and restart.');
+    process.exit(1);
+  }
+  console.warn('WARN: JWT_SECRET not set — using a random secret. All sessions will be invalidated on restart. Set JWT_SECRET in .env for stable auth.');
+}
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 const JWT_EXPIRES_IN = '7d';
 
