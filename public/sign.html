@@ -304,8 +304,12 @@
           overlay.dataset.fieldId = field.id;
           overlay.dataset.fieldType = 'signature';
         } else {
-          const input = document.createElement('input');
-          input.type = field.type === 'date' ? 'date' : 'text';
+          // Use textarea for free-form text/name so long content wraps; date/initials stay
+          // as single-line inputs since they're short by nature.
+          const isMultiline = field.type === 'text' || field.type === 'name';
+          const input = document.createElement(isMultiline ? 'textarea' : 'input');
+          if (!isMultiline) input.type = field.type === 'date' ? 'date' : 'text';
+          if (isMultiline) input.classList.add('inline-textarea');
           input.id = 'input-' + field.id;
           // Restore saved value or set default
           if (savedFieldValues[input.id] !== undefined) {
@@ -322,6 +326,10 @@
             const displayScale = canvas.getBoundingClientRect().width / canvas.width;
             const scaledWidth = field.width * 1.5 * displayScale; // 1.5 = PDF render scale
             input.style.width = Math.max(60, scaledWidth) + 'px';
+            if (isMultiline) {
+              const scaledHeight = field.height * 1.5 * displayScale;
+              input.style.height = Math.max(28, scaledHeight) + 'px';
+            }
           } else if (field.type === 'initials') {
             input.style.width = '80px';
           } else if (field.type === 'date') {
@@ -367,6 +375,9 @@
           const newW = Math.max(40, startInputW + (ev.clientX - startX));
           const newH = Math.max(20, startInputH + (ev.clientY - startY));
           input.style.width = newW + 'px';
+          // Textareas need an explicit height to grow on screen — for inputs the height
+          // comes from font-size + padding so we leave that alone.
+          if (input.tagName === 'TEXTAREA') input.style.height = newH + 'px';
           field.width = newW / (pdfRenderScale * displayScale);
           field.height = newH / (pdfRenderScale * displayScale);
         }

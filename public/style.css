@@ -1234,7 +1234,8 @@ input:focus, select:focus, textarea:focus {
   transform: translate(-50%, -50%);
 }
 
-.inline-field-overlay input {
+.inline-field-overlay input,
+.inline-field-overlay textarea {
   border: 2px solid var(--accent);
   border-radius: 6px;
   padding: 3px 6px;
@@ -1245,11 +1246,22 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 1px 4px rgba(20, 30, 40, 0.10);
 }
 
-.inline-field-overlay input:focus {
+.inline-field-overlay input:focus,
+.inline-field-overlay textarea:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-tint);
   background: var(--paper);
+}
+
+/* Textarea wraps to multiple lines as user types; native resize disabled since
+   we have our own corner handle that updates the underlying field dimensions. */
+.inline-field-overlay textarea.inline-textarea {
+  resize: none;
+  overflow: auto;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .inline-field-overlay.signature-overlay {
@@ -1343,6 +1355,15 @@ input:focus, select:focus, textarea:focus {
 .field-marker.editable .marker-input:focus {
   background: var(--paper);
   box-shadow: 0 0 0 2px var(--accent-tint) inset;
+}
+/* Textarea variant for free-form text — wrap to multiple lines, disable native
+   corner-resize (we have our own resize-handle), match input styling otherwise. */
+.field-marker.editable .marker-input-multiline {
+  resize: none;
+  overflow: auto;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 .field-marker.editable .remove-field,
 .field-marker.sig-field .remove-field {

@@ -852,9 +852,15 @@ function renderFieldMarkers() {
     }
 
     if (isEditableForSender) {
-      const input = document.createElement('input');
-      input.className = 'marker-input';
-      input.type = field.type === 'date' ? 'date' : 'text';
+      // Use a textarea for free-form text/name fields so long content wraps to multiple
+       // lines as the user types (matching the server's word-wrap when the PDF renders).
+       // date/initials stay as single-line inputs since they don't benefit from wrapping.
+      const isMultiline = field.type === 'text' || field.type === 'name';
+      const input = document.createElement(isMultiline ? 'textarea' : 'input');
+      input.className = 'marker-input' + (isMultiline ? ' marker-input-multiline' : '');
+      if (!isMultiline) {
+        input.type = field.type === 'date' ? 'date' : 'text';
+      }
       input.dataset.fieldId = field.id;
       input.placeholder = field.type === 'name' ? 'Full legal name'
                         : field.type === 'initials' ? 'Initials'
