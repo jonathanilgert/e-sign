@@ -1501,17 +1501,39 @@ async function loadSavedTemplates() {
   container.innerHTML = templates.map(t => `
     <div class="template-row">
       <div class="template-info">
-        <div class="template-name">${t.name}</div>
-        <div class="template-meta">${t.doc_title || 'No title'}</div>
+        <div class="template-name">${escapeAttr(t.name)}</div>
+        <div class="template-meta">${escapeAttr(t.doc_title || 'No title')}</div>
       </div>
       <span class="status-badge ${stageClass[t.stage]}">${stageLabel[t.stage]}</span>
       <div class="template-meta">${new Date(t.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</div>
       <div class="doc-actions">
-        <button class="btn btn-sm" onclick="useSavedTemplate('${t.id}')">Use</button>
-        <button class="btn btn-sm btn-delete" onclick="deleteSavedTemplate('${t.id}', '${t.name.replace(/'/g, "\\'")}')">&times;</button>
+        <button class="btn btn-sm" data-action="use-template" data-tpl-id="${t.id}">Use</button>
+        <button class="btn btn-sm btn-delete" data-action="delete-template" data-tpl-id="${t.id}" data-tpl-name="${escapeAttr(t.name)}">&times;</button>
       </div>
     </div>
   `).join('');
+
+  bindSavedTemplateActions();
+}
+
+// Delegated click handler for the saved-templates list — bound once, survives re-renders.
+let _savedTemplateActionsBound = false;
+function bindSavedTemplateActions() {
+  if (_savedTemplateActionsBound) return;
+  const container = document.getElementById('saved-templates-list');
+  if (!container) return;
+  container.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const tplId = btn.dataset.tplId;
+    if (action === 'use-template') {
+      useSavedTemplate(tplId);
+    } else if (action === 'delete-template') {
+      deleteSavedTemplate(tplId, btn.dataset.tplName || '');
+    }
+  });
+  _savedTemplateActionsBound = true;
 }
 
 async function populateSavedSelect() {
@@ -1601,12 +1623,23 @@ async function useSavedTemplate(id) {
 
 async function deleteSavedTemplate(id, name) {
   if (!confirm(`Delete saved template "${name}"?`)) return;
-  const res = await authFetch(`/api/saved-templates/${id}`, { method: 'DELETE' });
-  if (res.ok) {
-    showToast('Template deleted');
-    loadSavedTemplates();
-  } else {
-    showToast('Failed to delete template');
+  try {
+    const res = await authFetch(`/api/saved-templates/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast('Template deleted');
+      loadSavedTemplates();
+      return;
+    }
+    let detail = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data && data.error) detail = data.error;
+    } catch (_) { /* response wasn't JSON */ }
+    showToast(`Couldn't delete: ${detail}`);
+    console.error('[delete template] failed', { id, status: res.status, detail });
+  } catch (err) {
+    showToast(`Couldn't delete: ${err && err.message ? err.message : 'network error'}`);
+    console.error('[delete template] threw', err);
   }
 }
 
