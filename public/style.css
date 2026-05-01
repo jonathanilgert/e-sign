@@ -1548,7 +1548,9 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  /* Must sit above the send-confirm overlay (z-index: 1000) — the upgrade
+     modal is opened from inside that flow when the user hits their free cap. */
+  z-index: 1100;
 }
 
 .upgrade-box {
