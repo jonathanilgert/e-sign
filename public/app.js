@@ -15,8 +15,28 @@ let state = {
   currentView: 'dashboard',
   // Single-pass flow: sender's text values and signature, captured during placement
   senderFieldValues: {},
-  senderSignature: null
+  senderSignature: null,
+  // Additional signers beyond the primary recipient (e.g., 2nd/3rd tenants on a lease).
+  // Empty array = single-recipient flow (existing behavior). Each entry: { name, email }.
+  extraSigners: []
 };
+
+const MAX_EXTRA_SIGNERS = 4; // up to 5 total recipients including primary
+// Used in dropdowns, field markers, and the dashboard. Generic "Recipient N" so
+// the same wording works for tenants, contractors, partners, witnesses, etc.
+const SIGNER_PALETTE_NAMES = ['Recipient 1', 'Recipient 2', 'Recipient 3', 'Recipient 4', 'Recipient 5'];
+
+function totalRecipientCount() { return 1 + state.extraSigners.length; }
+function recipientLabelFor(idx) {
+  if (state.extraSigners.length === 0) return 'Recipient';
+  return SIGNER_PALETTE_NAMES[idx] || `Recipient ${idx + 1}`;
+}
+// Ordinal label used on the form ("Second Recipient", "Third Recipient", ...)
+const ORDINAL_RECIPIENT_LABELS = ['First', 'Second', 'Third', 'Fourth', 'Fifth'];
+function ordinalRecipientLabel(idx) {
+  // idx is 0-based across ALL recipients. The primary is idx=0; extras start at 1.
+  return ORDINAL_RECIPIENT_LABELS[idx] ? `${ORDINAL_RECIPIENT_LABELS[idx]} Recipient` : `Recipient ${idx + 1}`;
+}
 
 // Sender signature canvas refs (set up in setupSenderSignaturePad on first use)
 let senderSigCanvas = null;
@@ -128,6 +148,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupPageNav();
   setupTargetCursor();
 
+  // Extra signers (multi-recipient support)
+  setupExtraSigners();
+
   document.getElementById('btn-prepare').addEventListener('click', prepareDocument);
   document.getElementById('btn-done-fields').addEventListener('click', finishFieldPlacement);
   document.getElementById('btn-undo').addEventListener('click', removeLastField);
@@ -189,6 +212,9 @@ function showView(view) {
     document.getElementById('doc-title').value = '';
     document.getElementById('recipient-name').value = '';
     document.getElementById('recipient-email').value = '';
+    state.extraSigners = [];
+    renderExtraSignerRows();
+    rebuildFieldRoleSelect();
     // Re-fill sender from user info
     const user = JSON.parse(localStorage.getItem('esign_user') || '{}');
     if (user.name) document.getElementById('sender-name').value = user.name;
@@ -293,13 +319,18 @@ function renderFilteredDocs() {
 
   let docs = [...state.allDocs];
 
-  // Filter by search
+  // Filter by search (matches title, primary recipient, AND any extra signers)
   if (search) {
-    docs = docs.filter(d =>
-      (d.title || '').toLowerCase().includes(search) ||
-      (d.recipient_name || '').toLowerCase().includes(search) ||
-      (d.recipient_email || '').toLowerCase().includes(search)
-    );
+    docs = docs.filter(d => {
+      if ((d.title || '').toLowerCase().includes(search)) return true;
+      if ((d.recipient_name || '').toLowerCase().includes(search)) return true;
+      if ((d.recipient_email || '').toLowerCase().includes(search)) return true;
+      const extras = Array.isArray(d.extra_signers) ? d.extra_signers : [];
+      return extras.some(s =>
+        (s.name || '').toLowerCase().includes(search) ||
+        (s.email || '').toLowerCase().includes(search)
+      );
+    });
   }
 
   // Filter by status
@@ -418,14 +449,32 @@ function renderDocTable(docs) {
     }
     actions += `<button class="btn btn-sm btn-delete" data-action="delete" data-doc-id="${d.id}" data-doc-title="${escapeAttr(d.title || '')}" data-doc-status="${d.status}">&#10005;</button>`;
 
+    // Multi-signer recipient cell + progress badge
+    const extras = Array.isArray(d.extra_signers) ? d.extra_signers : [];
+    let recipientCellName = d.recipient_name || '-';
+    let recipientCellEmail = d.recipient_email || '';
+    let progressBadge = '';
+    if (extras.length > 0) {
+      recipientCellName = `${d.recipient_name || '-'} <span class="signer-progress">+${extras.length} more</span>`;
+      // How many have signed?
+      let signedCount = d.recipient_completed_at ? 1 : 0;
+      for (const s of extras) if (s && s.signed_at) signedCount++;
+      const total = 1 + extras.length;
+      if (d.status === 'awaiting_recipient') {
+        progressBadge = ` <span class="signer-progress">${signedCount} of ${total} signed</span>`;
+      } else if (d.status === 'completed') {
+        progressBadge = ` <span class="signer-progress">${total} signers</span>`;
+      }
+    }
+
     return `<div class="doc-table-row${d.status === 'expired' ? ' doc-expired' : ''}">
       <div>
-        <div class="doc-table-title">${d.title}</div>
+        <div class="doc-table-title">${d.title}${progressBadge}</div>
         ${expiryInfo}
       </div>
       <div>
-        <div class="doc-table-recipient">${d.recipient_name || '-'}</div>
-        <div class="doc-table-email">${d.recipient_email || ''}</div>
+        <div class="doc-table-recipient">${recipientCellName}</div>
+        <div class="doc-table-email">${recipientCellEmail}</div>
       </div>
       <div><span class="status-badge ${statusClass[d.status] || ''}">${statusLabel[d.status] || d.status}</span></div>
       <div class="doc-table-date">${dateStr}</div>
@@ -504,7 +553,8 @@ function setupTargetCursor() {
 function updateCursorColor() {
   const cursor = document.getElementById('target-cursor');
   const role = document.getElementById('field-role').value;
-  cursor.classList.toggle('recipient-mode', role === 'recipient');
+  // role values are now "sender" or "recipient:N". Any recipient turns the cursor orange.
+  cursor.classList.toggle('recipient-mode', role.startsWith('recipient'));
 }
 
 // --------------- Library (curated public templates) ---------------
@@ -591,6 +641,137 @@ function setupSourceToggle() {
   });
 }
 
+// --------------- Extra Signers (multi-recipient) ---------------
+function setupExtraSigners() {
+  const btn = document.getElementById('btn-add-signer');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    if (state.extraSigners.length >= MAX_EXTRA_SIGNERS) {
+      showToast(`Maximum ${MAX_EXTRA_SIGNERS + 1} signers (1 primary + ${MAX_EXTRA_SIGNERS} additional)`);
+      return;
+    }
+    state.extraSigners.push({ name: '', email: '' });
+    renderExtraSignerRows();
+    rebuildFieldRoleSelect();
+  });
+  renderExtraSignerRows();
+}
+
+function renderExtraSignerRows() {
+  const container = document.getElementById('extra-signers-list');
+  if (!container) return;
+  container.innerHTML = '';
+
+  state.extraSigners.forEach((signer, idx) => {
+    // idx is 0-based within extras (so first extra = idx 0, second = idx 1).
+    // Across the whole signer list it's idx+1 (primary is index 0).
+    const overallIdx = idx + 1;
+    const ordinalLabel = ordinalRecipientLabel(overallIdx);
+    const row = document.createElement('div');
+    row.className = 'form-row extra-signer-row';
+    row.dataset.idx = String(idx);
+    row.innerHTML = `
+      <div class="form-group">
+        <label for="extra-signer-name-${idx}">${escapeAttr(ordinalLabel)} Name</label>
+        <input type="text" id="extra-signer-name-${idx}" class="extra-signer-name" data-idx="${idx}" value="${escapeAttr(signer.name || '')}" placeholder="Full legal name">
+      </div>
+      <div class="form-group">
+        <label for="extra-signer-email-${idx}">${escapeAttr(ordinalLabel)} Email</label>
+        <input type="email" id="extra-signer-email-${idx}" class="extra-signer-email" data-idx="${idx}" value="${escapeAttr(signer.email || '')}" placeholder="recipient@example.com">
+      </div>
+      <button type="button" class="extra-signer-remove" data-idx="${idx}" title="Remove this recipient" aria-label="Remove ${escapeAttr(ordinalLabel)}">&times;</button>
+    `;
+    container.appendChild(row);
+  });
+
+  container.querySelectorAll('.extra-signer-name').forEach(inp => {
+    inp.addEventListener('input', (e) => {
+      const i = parseInt(e.target.dataset.idx, 10);
+      if (state.extraSigners[i]) state.extraSigners[i].name = e.target.value;
+    });
+  });
+  container.querySelectorAll('.extra-signer-email').forEach(inp => {
+    inp.addEventListener('input', (e) => {
+      const i = parseInt(e.target.dataset.idx, 10);
+      if (state.extraSigners[i]) state.extraSigners[i].email = e.target.value;
+    });
+  });
+  container.querySelectorAll('.extra-signer-remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const i = parseInt(e.currentTarget.dataset.idx, 10);
+      removeExtraSigner(i);
+    });
+  });
+
+  // Hide the "+ Add another signer" button once cap is reached
+  const addBtn = document.getElementById('btn-add-signer');
+  if (addBtn) addBtn.style.display = state.extraSigners.length >= MAX_EXTRA_SIGNERS ? 'none' : '';
+}
+
+function removeExtraSigner(idx) {
+  if (idx < 0 || idx >= state.extraSigners.length) return;
+  const removedSignerIdx = idx + 1; // because primary is signer 0
+  state.extraSigners.splice(idx, 1);
+
+  // Reassign signer_index on existing fields:
+  //   - fields targeted at removed signer → demoted to primary recipient (signer 0) so user doesn't lose them silently
+  //   - fields targeted at signers above the removed one → shift down by 1
+  for (const f of state.fields) {
+    if (f.role !== 'recipient') continue;
+    const cur = typeof f.signer_index === 'number' ? f.signer_index : 0;
+    if (cur === removedSignerIdx) {
+      f.signer_index = 0;
+    } else if (cur > removedSignerIdx) {
+      f.signer_index = cur - 1;
+    }
+  }
+
+  renderExtraSignerRows();
+  rebuildFieldRoleSelect();
+  if (state.fields.length > 0) {
+    renderFieldMarkers();
+    updateFieldSummary();
+  }
+}
+
+function rebuildFieldRoleSelect() {
+  const select = document.getElementById('field-role');
+  if (!select) return;
+  const prev = select.value;
+  // Sender + one option per recipient
+  let html = '<option value="sender">You (Sender)</option>';
+  if (state.extraSigners.length === 0) {
+    html += '<option value="recipient:0">Recipient</option>';
+  } else {
+    for (let i = 0; i < totalRecipientCount(); i++) {
+      html += `<option value="recipient:${i}">${escapeAttr(SIGNER_PALETTE_NAMES[i] || `Recipient ${i + 1}`)}</option>`;
+    }
+  }
+  select.innerHTML = html;
+  // Restore previous selection if still valid; otherwise default to sender.
+  if ([...select.options].some(o => o.value === prev)) {
+    select.value = prev;
+  } else {
+    select.value = 'sender';
+  }
+  updateLegend();
+}
+
+function updateLegend() {
+  const legend = document.querySelector('.color-legend');
+  if (!legend) return;
+  let html = '<div class="legend-item"><span class="legend-dot sender"></span> Your fields</div>';
+  if (state.extraSigners.length === 0) {
+    html += '<div class="legend-item"><span class="legend-dot recipient"></span> Their fields</div>';
+  } else {
+    for (let i = 0; i < totalRecipientCount(); i++) {
+      const cls = i === 0 ? 'recipient' : `recipient-${i}`;
+      html += `<div class="legend-item"><span class="legend-dot ${cls}"></span> ${escapeAttr(SIGNER_PALETTE_NAMES[i] || `Recipient ${i + 1}`)}</div>`;
+    }
+  }
+  legend.innerHTML = html;
+}
+
 // --------------- Prepare Document ---------------
 async function prepareDocument() {
   const title = document.getElementById('doc-title').value.trim();
@@ -611,7 +792,20 @@ async function prepareDocument() {
     return;
   }
 
-  state.docInfo = { title, senderName, senderEmail, recipientName, recipientEmail };
+  // Validate extra signers (if any). Empty rows are not allowed once added —
+  // the user should remove them via the "Remove" button.
+  for (let i = 0; i < state.extraSigners.length; i++) {
+    const s = state.extraSigners[i];
+    if (!s.name || !s.name.trim() || !s.email || !s.email.trim()) {
+      showToast(`Please fill in name and email for ${SIGNER_PALETTE_NAMES[i + 1] || `Recipient ${i + 2}`} (or remove that row)`);
+      return;
+    }
+  }
+
+  state.docInfo = {
+    title, senderName, senderEmail, recipientName, recipientEmail,
+    extraSigners: state.extraSigners.map(s => ({ name: s.name.trim(), email: s.email.trim() }))
+  };
 
   let pdfUrl;
 
@@ -687,6 +881,9 @@ async function prepareDocument() {
   document.getElementById('step-fields').style.display = '';
   document.querySelector('main').classList.add('workspace-mode');
 
+  // Refresh role select + legend in case the user added/removed signers since last visit.
+  rebuildFieldRoleSelect();
+
   renderPage(state.currentPage);
   if (state.fields.length > 0) updateFieldSummary();
 }
@@ -730,7 +927,17 @@ function setupFieldPlacement() {
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
 
-    const role = document.getElementById('field-role').value;
+    const roleRaw = document.getElementById('field-role').value;
+    // roleRaw is either "sender" or "recipient:N" (N = signer_index, 0 for primary).
+    let role, signerIdx;
+    if (roleRaw.startsWith('recipient')) {
+      role = 'recipient';
+      const colonIdx = roleRaw.indexOf(':');
+      signerIdx = colonIdx >= 0 ? parseInt(roleRaw.slice(colonIdx + 1), 10) || 0 : 0;
+    } else {
+      role = 'sender';
+      signerIdx = null;
+    }
     const type = document.getElementById('field-type').value;
     const customLabel = document.getElementById('field-label').value.trim();
 
@@ -758,6 +965,8 @@ function setupFieldPlacement() {
       displayX: clickX / rect.width * 100,
       displayY: clickY / rect.height * 100
     };
+    // Only attach signer_index for recipient fields. Sender fields stay plain.
+    if (role === 'recipient') field.signer_index = signerIdx || 0;
 
     state.fields.push(field);
     document.getElementById('field-label').value = '';
@@ -821,7 +1030,15 @@ function renderFieldMarkers() {
     if (isEditableForSender) extraClass = ' editable';
     else if (isSenderSigField) extraClass = ' sig-field';
 
-    marker.className = `field-marker ${field.role}${extraClass}`;
+    // Recipient markers get a per-signer color class so different tenants are visually distinct.
+    let signerClass = '';
+    if (field.role === 'recipient') {
+      const sIdx = typeof field.signer_index === 'number' ? field.signer_index : 0;
+      // recipient-0 falls back to the existing .recipient styling; 1+ pick from palette.
+      if (state.extraSigners.length > 0 && sIdx > 0) signerClass = ` recipient-${sIdx}`;
+    }
+
+    marker.className = `field-marker ${field.role}${extraClass}${signerClass}`;
     marker.style.left = field.displayX + '%';
     marker.style.top = field.displayY + '%';
 
@@ -831,7 +1048,15 @@ function renderFieldMarkers() {
       marker.style.height = (field.height * state.scale * displayScale) + 'px';
     }
 
-    const roleLabel = field.role === 'sender' ? 'You' : 'Them';
+    let roleLabel;
+    if (field.role === 'sender') {
+      roleLabel = 'You';
+    } else if (state.extraSigners.length === 0) {
+      roleLabel = 'Them';
+    } else {
+      const sIdx = typeof field.signer_index === 'number' ? field.signer_index : 0;
+      roleLabel = SIGNER_PALETTE_NAMES[sIdx] || `Recipient ${sIdx + 1}`;
+    }
     const labelEl = document.createElement('span');
     labelEl.className = 'field-marker-label';
     labelEl.textContent = `${roleLabel}: ${field.label}`;
@@ -1050,11 +1275,20 @@ function updateFieldSummary() {
 
   let html = '<p style="font-size:13px;color:var(--muted);margin-bottom:6px">Fields placed:</p>';
   senderFields.forEach(f => {
-    html += `<span class="field-summary-item sender">You: ${f.label} (p${f.page + 1})</span>`;
+    html += `<span class="field-summary-item sender">You: ${escapeAttr(f.label)} (p${f.page + 1})</span>`;
   });
-  recipientFields.forEach(f => {
-    html += `<span class="field-summary-item recipient">Them: ${f.label} (p${f.page + 1})</span>`;
-  });
+  if (state.extraSigners.length === 0) {
+    recipientFields.forEach(f => {
+      html += `<span class="field-summary-item recipient">Them: ${escapeAttr(f.label)} (p${f.page + 1})</span>`;
+    });
+  } else {
+    recipientFields.forEach(f => {
+      const sIdx = typeof f.signer_index === 'number' ? f.signer_index : 0;
+      const cls = sIdx === 0 ? 'recipient' : `recipient-${sIdx}`;
+      const tag = SIGNER_PALETTE_NAMES[sIdx] || `Recipient ${sIdx + 1}`;
+      html += `<span class="field-summary-item ${cls}">${escapeAttr(tag)}: ${escapeAttr(f.label)} (p${f.page + 1})</span>`;
+    });
+  }
   summary.innerHTML = html;
 }
 
@@ -1344,8 +1578,40 @@ async function finishFieldPlacement() {
 
 function openSendConfirm() {
   document.getElementById('send-confirm-doc-title').textContent = state.docInfo.title;
-  document.getElementById('send-confirm-recipient-name').textContent = state.docInfo.recipientName;
-  document.getElementById('send-confirm-recipient-email').textContent = state.docInfo.recipientEmail;
+  const single = document.getElementById('send-confirm-single');
+  const multi = document.getElementById('send-confirm-multi');
+  const heading = document.getElementById('send-confirm-heading');
+  const sub = document.getElementById('send-confirm-sub');
+  const extras = state.docInfo.extraSigners || [];
+
+  if (extras.length === 0) {
+    // Single-recipient layout (unchanged)
+    if (single) single.style.display = '';
+    if (multi) { multi.style.display = 'none'; multi.innerHTML = ''; }
+    if (heading) heading.textContent = 'Send to recipient?';
+    if (sub) sub.textContent = "Once you confirm, this document goes straight to the recipient's inbox.";
+    document.getElementById('send-confirm-recipient-name').textContent = state.docInfo.recipientName;
+    document.getElementById('send-confirm-recipient-email').textContent = state.docInfo.recipientEmail;
+  } else {
+    // Multi-signer layout — list all signers, in signing order
+    if (single) single.style.display = 'none';
+    if (multi) {
+      multi.style.display = '';
+      const allSigners = [
+        { name: state.docInfo.recipientName, email: state.docInfo.recipientEmail },
+        ...extras
+      ];
+      multi.innerHTML = allSigners.map((s, i) => `
+        <div class="send-confirm-signer">
+          <div class="send-confirm-signer-tag">${escapeAttr(SIGNER_PALETTE_NAMES[i] || `Recipient ${i + 1}`)}${i === 0 ? ' (signs first)' : ''}</div>
+          <div><strong>${escapeAttr(s.name)}</strong> &middot; ${escapeAttr(s.email)}</div>
+        </div>
+      `).join('');
+    }
+    if (heading) heading.textContent = `Send to ${1 + extras.length} signers?`;
+    if (sub) sub.textContent = `Each signer will receive their own link, in order. The next signer is emailed only after the previous one signs.`;
+  }
+
   // Reset the save-as-template controls each time the modal opens
   const saveCheckbox = document.getElementById('send-confirm-save-template');
   const nameInput = document.getElementById('send-confirm-template-name');
@@ -1390,7 +1656,8 @@ async function confirmAndSend() {
     senderEmail: state.docInfo.senderEmail,
     recipientName: state.docInfo.recipientName,
     recipientEmail: state.docInfo.recipientEmail,
-    fields: state.fields
+    fields: state.fields,
+    extraSigners: (state.docInfo.extraSigners && state.docInfo.extraSigners.length > 0) ? state.docInfo.extraSigners : undefined
   };
 
   let createRes;
@@ -1476,11 +1743,15 @@ async function confirmAndSend() {
   closeSendConfirm();
 
   // Compose a single toast that reflects what actually happened
-  let msg = `Sent to ${state.docInfo.recipientName}. Awaiting their signature.`;
+  const totalSigners = 1 + ((state.docInfo.extraSigners && state.docInfo.extraSigners.length) || 0);
+  const recipientLabel = totalSigners > 1
+    ? `${state.docInfo.recipientName} (1 of ${totalSigners})`
+    : state.docInfo.recipientName;
+  let msg = `Sent to ${recipientLabel}. Awaiting their signature.`;
   if (templateSavedOk === true) {
-    msg = `Sent to ${state.docInfo.recipientName}. Template "${tplName}" saved.`;
+    msg = `Sent to ${recipientLabel}. Template "${tplName}" saved.`;
   } else if (templateSavedOk === false) {
-    msg = `Sent to ${state.docInfo.recipientName}, but the template couldn't be saved.`;
+    msg = `Sent to ${recipientLabel}, but the template couldn't be saved.`;
   }
   showToast(msg);
   showView('dashboard');

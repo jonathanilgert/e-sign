@@ -153,6 +153,15 @@ try { db.exec(`ALTER TABLE documents ADD COLUMN expires_at TEXT`); } catch (e) {
 try { db.exec(`ALTER TABLE documents ADD COLUMN last_reminder_at TEXT`); } catch (e) { /* exists */ }
 try { db.exec(`ALTER TABLE documents ADD COLUMN reminder_count INTEGER DEFAULT 0`); } catch (e) { /* exists */ }
 
+// Multi-signer columns (migration-safe). extra_signers is JSON array of
+// { name, email, signed_at, ip } for signers BEYOND the primary recipient
+// (which is still tracked in recipient_name / recipient_email).
+// current_signer_index is 0-based and points at whichever signer is currently
+// awaited. 0 = primary recipient. NULL/missing extra_signers means single-recipient
+// (back-compat); existing rows behave exactly as before.
+try { db.exec(`ALTER TABLE documents ADD COLUMN extra_signers TEXT`); } catch (e) { /* exists */ }
+try { db.exec(`ALTER TABLE documents ADD COLUMN current_signer_index INTEGER DEFAULT 0`); } catch (e) { /* exists */ }
+
 // Stripe billing columns (migration-safe)
 try { db.exec(`ALTER TABLE users ADD COLUMN stripe_customer_id TEXT`); } catch (e) { /* exists */ }
 try { db.exec(`ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT`); } catch (e) { /* exists */ }
@@ -715,6 +724,20 @@ const emailTemplates = {
       </p>
       ${emailButton('Go to Dashboard', BASE_URL + '/dashboard')}
     `);
+  },
+
+  // Sent to OTHER unsigned signers when one of them just signed in a multi-signer doc.
+  // Informational + nudge: tells them the doc is moving forward and re-surfaces their link.
+  coSignerSigned(recipientName, signerWhoJustSignedName, senderName, docTitle, signUrl) {
+    return emailLayout(`
+      <h2 style="margin:0 0 16px;font-size:22px;color:#1a1a2e">${signerWhoJustSignedName} just signed</h2>
+      <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6">Hi ${recipientName},</p>
+      <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6">
+        <strong>${signerWhoJustSignedName}</strong> has signed <strong>${docTitle}</strong>${senderName ? ` from ${senderName}` : ''}. The document still needs your signature to be fully executed.
+      </p>
+      ${emailButton('Review & Sign Document', signUrl)}
+      <p style="margin:0;font-size:13px;color:#9ca3af">If you've already signed, please disregard this notice.</p>
+    `, { hideUnsubscribe: true });
   },
 
   paymentReceipt(name, amount, description, date) {
@@ -1333,7 +1356,7 @@ app.post('/api/documents', docSendLimiter, (req, res) => {
   const recipientName = sanitize(req.body.recipientName || '');
   const senderEmail = (req.body.senderEmail || '').trim().toLowerCase();
   const recipientEmail = (req.body.recipientEmail || '').trim().toLowerCase();
-  const { pdfSource, templateName, libraryItemId, savedTemplatePdf, fields } = req.body;
+  const { pdfSource, templateName, libraryItemId, savedTemplatePdf, fields, extraSigners } = req.body;
 
   // Validate inputs
   if (title.length > 300) return res.status(400).json({ error: 'Title is too long' });
@@ -1341,6 +1364,24 @@ app.post('/api/documents', docSendLimiter, (req, res) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (senderEmail && !emailRegex.test(senderEmail)) return res.status(400).json({ error: 'Invalid sender email' });
   if (recipientEmail && !emailRegex.test(recipientEmail)) return res.status(400).json({ error: 'Invalid recipient email' });
+
+  // Validate + normalize extra signers (signers beyond the primary recipient).
+  // Cap at 4 extras (5 total signers including the primary). Each entry becomes
+  // { name, email, signed_at: null, ip: null }.
+  let normalizedExtraSigners = null;
+  if (Array.isArray(extraSigners) && extraSigners.length > 0) {
+    if (extraSigners.length > 4) return res.status(400).json({ error: 'Too many additional signers (max 4)' });
+    normalizedExtraSigners = [];
+    for (let i = 0; i < extraSigners.length; i++) {
+      const s = extraSigners[i] || {};
+      const sName = sanitize((s.name || '').toString());
+      const sEmail = (s.email || '').toString().trim().toLowerCase();
+      if (!sName || !sEmail) return res.status(400).json({ error: `Signer ${i + 2} is missing a name or email` });
+      if (sName.length > 100) return res.status(400).json({ error: `Signer ${i + 2} name is too long` });
+      if (!emailRegex.test(sEmail)) return res.status(400).json({ error: `Signer ${i + 2} has an invalid email` });
+      normalizedExtraSigners.push({ name: sName, email: sEmail, signed_at: null, ip: null });
+    }
+  }
 
   // Billing check
   const userId = req.user ? req.user.id : null;
@@ -1380,9 +1421,14 @@ app.post('/api/documents', docSendLimiter, (req, res) => {
   }
 
   db.prepare(`
-    INSERT INTO documents (id, title, pdf_path, sender_name, sender_email, recipient_name, recipient_email, fields, template_name, user_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, title || 'Untitled Document', pdfPath, senderName, senderEmail, recipientName, recipientEmail, JSON.stringify(fields || []), templateName || null, userId);
+    INSERT INTO documents (id, title, pdf_path, sender_name, sender_email, recipient_name, recipient_email, fields, template_name, user_id, extra_signers, current_signer_index)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+  `).run(
+    id, title || 'Untitled Document', pdfPath,
+    senderName, senderEmail, recipientName, recipientEmail,
+    JSON.stringify(fields || []), templateName || null, userId,
+    normalizedExtraSigners ? JSON.stringify(normalizedExtraSigners) : null
+  );
 
   // Increment monthly counter
   if (userId) {
@@ -1418,7 +1464,16 @@ app.get('/api/stats', requireAuth, (req, res) => {
 
 // List all documents (scoped to authenticated user)
 app.get('/api/documents', (req, res) => {
-  const docs = db.prepare('SELECT id, title, status, sender_name, recipient_name, recipient_email, created_at, sender_completed_at, recipient_completed_at, expires_at, reminder_count FROM documents WHERE user_id = ? ORDER BY created_at DESC').all(req.user.id);
+  const docs = db.prepare('SELECT id, title, status, sender_name, recipient_name, recipient_email, created_at, sender_completed_at, recipient_completed_at, expires_at, reminder_count, extra_signers, current_signer_index FROM documents WHERE user_id = ? ORDER BY created_at DESC').all(req.user.id);
+  // Parse extra_signers JSON for the client (don't leak signer IPs).
+  for (const d of docs) {
+    if (d.extra_signers) {
+      try {
+        const parsed = JSON.parse(d.extra_signers);
+        d.extra_signers = parsed.map(s => ({ name: s.name, email: s.email, signed_at: s.signed_at }));
+      } catch (e) { d.extra_signers = null; }
+    }
+  }
   res.json(docs);
 });
 
@@ -1432,6 +1487,13 @@ app.get('/api/documents/:id', (req, res) => {
     doc.status = 'expired';
   }
   doc.fields = JSON.parse(doc.fields || '[]');
+  // Parse extra_signers JSON for client; strip IPs (not needed by UI).
+  if (doc.extra_signers) {
+    try {
+      const parsed = JSON.parse(doc.extra_signers);
+      doc.extra_signers = parsed.map(s => ({ name: s.name, email: s.email, signed_at: s.signed_at }));
+    } catch (e) { doc.extra_signers = null; }
+  }
   res.json(doc);
 });
 
@@ -1501,10 +1563,13 @@ app.post('/api/documents/:id/sign-sender', async (req, res) => {
       }
     }
 
-    // Attestation footer
+    // Attestation footer. In multi-signer mode push the sender line above where
+    // each recipient's attestation will land (signer N at y = 10 + N*8).
+    const senderExtras = doc.extra_signers ? JSON.parse(doc.extra_signers) : [];
+    const senderAttestY = senderExtras.length > 0 ? (10 + senderExtras.length * 8 + 8) : 20;
     const lastPage = overlay.getPage(overlay.getPageCount() - 1);
     const attestText = `Digitally signed by ${doc.sender_name} on ${new Date().toISOString()} | IP: ${req.ip}`;
-    lastPage.drawText(attestText, { x: 30, y: 20, size: 7, font, color: rgb(0.4, 0.4, 0.4) });
+    lastPage.drawText(attestText, { x: 30, y: senderAttestY, size: 7, font, color: rgb(0.4, 0.4, 0.4) });
 
     // Save overlay and merge with original using qpdf
     const overlayPath = doc.pdf_path + '.overlay.pdf';
@@ -1514,29 +1579,56 @@ app.post('/api/documents/:id/sign-sender', async (req, res) => {
     fs.renameSync(mergedPath, doc.pdf_path);
     fs.unlinkSync(overlayPath);
 
-    // Update DB — set expiration to 30 days from now
+    // Update DB — set expiration to 30 days from now. current_signer_index
+    // resets to 0 here in case the doc was re-prepared.
     const expiresAt = new Date(Date.now() + DOC_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString();
     db.prepare(`
-      UPDATE documents SET status = 'awaiting_recipient', sender_completed_at = datetime('now'), ip_sender = ?, fields = ?, expires_at = ?
+      UPDATE documents SET status = 'awaiting_recipient', sender_completed_at = datetime('now'), ip_sender = ?, fields = ?, expires_at = ?, current_signer_index = 0
       WHERE id = ?
     `).run(req.ip, JSON.stringify(fields), expiresAt, doc.id);
 
-    // Email recipient
-    const signUrl = `${BASE_URL}/sign/${doc.id}?role=recipient`;
-    await sendEmail(
-      doc.recipient_email,
-      `${doc.sender_name} sent you a document to sign`,
-      emailTemplates.signingInvitation(doc.sender_name, doc.title, signUrl)
-    );
+    // Email every signer in parallel — any of them can sign first, in any order.
+    // Primary recipient gets the legacy URL shape (no `signer` param) for back-compat.
+    const allSigners = [
+      { name: doc.recipient_name, email: doc.recipient_email, idx: 0 },
+      ...senderExtras.map((s, i) => ({ name: s.name, email: s.email, idx: i + 1 }))
+    ];
+    let mailErrors = 0;
+    for (const sgn of allSigners) {
+      const signUrl = sgn.idx === 0
+        ? `${BASE_URL}/sign/${doc.id}?role=recipient`
+        : `${BASE_URL}/sign/${doc.id}?role=recipient&signer=${sgn.idx}`;
+      try {
+        await sendEmail(
+          sgn.email,
+          `${doc.sender_name} sent you a document to sign`,
+          emailTemplates.signingInvitation(doc.sender_name, doc.title, signUrl)
+        );
+      } catch (mailErr) {
+        mailErrors++;
+        console.error(`sign-sender: failed to email signer ${sgn.idx} (${sgn.email}):`, mailErr);
+      }
+    }
 
-    res.json({ success: true, message: 'Document sent to recipient for signing' });
+    const sendMsg = allSigners.length === 1
+      ? 'Document sent to recipient for signing'
+      : `Document sent to ${allSigners.length} signers — any of them can sign first.`;
+    res.json({ success: true, message: sendMsg, mailErrors });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Submit recipient's fields and signature, generate final PDF, email both parties
+// Submit a signer's fields and signature.
+//
+// Single-signer mode (no extra_signers): unchanged — stamp the recipient's fields,
+// finalize, email both parties.
+//
+// Multi-signer mode (extra_signers populated): PARALLEL signing — any signer can
+// sign at any time, in any order. After signing, if all signers are now done the
+// doc is finalized and everyone is emailed the completed PDF; otherwise the OTHER
+// still-unsigned signers get an FYI email ("[X] just signed — you still need to").
 app.post('/api/documents/:id/sign-recipient', async (req, res) => {
   try {
     const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
@@ -1548,10 +1640,30 @@ app.post('/api/documents/:id/sign-recipient', async (req, res) => {
       return res.status(410).json({ error: 'This document has expired and can no longer be signed' });
     }
 
+    const extras = doc.extra_signers ? JSON.parse(doc.extra_signers) : [];
+    const totalSigners = 1 + extras.length;
+    const hasMultipleSigners = extras.length > 0;
+
+    // Resolve signer index from body or query. Defaults to 0 for back-compat with
+    // single-signer URLs that don't carry a `signer` param.
+    let signerIdx = 0;
+    if (req.body && typeof req.body.signerIndex === 'number') signerIdx = req.body.signerIndex;
+    else if (req.query && req.query.signer != null) {
+      const fromQuery = parseInt(req.query.signer, 10);
+      if (!isNaN(fromQuery)) signerIdx = fromQuery;
+    }
+    if (signerIdx < 0 || signerIdx >= totalSigners) return res.status(400).json({ error: 'Invalid signer index' });
+
+    // Already-signed guard.
+    if (signerIdx === 0 && doc.recipient_completed_at) return res.status(400).json({ error: 'You have already signed this document' });
+    if (signerIdx > 0 && extras[signerIdx - 1] && extras[signerIdx - 1].signed_at) {
+      return res.status(400).json({ error: 'You have already signed this document' });
+    }
+
     const { fieldValues, signatureDataUrl, attestation } = req.body;
     if (!attestation) return res.status(400).json({ error: 'Attestation required' });
 
-    // Build overlay PDF with recipient fields, then stamp onto original
+    // Build overlay PDF
     const pdfBytes = fs.readFileSync(doc.pdf_path);
     const origPdf = await PDFDocument.load(pdfBytes);
     const overlay = await PDFDocument.create();
@@ -1563,10 +1675,20 @@ app.post('/api/documents/:id/sign-recipient', async (req, res) => {
     }
 
     const fields = JSON.parse(doc.fields || '[]');
-    console.log('[RECIPIENT SIGN] fieldValues:', JSON.stringify(fieldValues));
-    console.log('[RECIPIENT SIGN] has signature:', !!signatureDataUrl);
+
+    // Belongs to this signer? In single-signer mode, ALL recipient fields belong
+    // to the only signer (back-compat — old fields lack signer_index).
+    const fieldBelongsHere = (field) => {
+      if (field.role !== 'recipient') return false;
+      if (!hasMultipleSigners) return true;
+      const fIdx = typeof field.signer_index === 'number' ? field.signer_index : 0;
+      return fIdx === signerIdx;
+    };
+
+    console.log('[RECIPIENT SIGN] signerIdx:', signerIdx, 'of', totalSigners);
+
     for (const field of fields) {
-      if (field.role !== 'recipient') continue;
+      if (!fieldBelongsHere(field)) continue;
       const page = overlay.getPage(field.page);
       if (field.type === 'signature') {
         if (!signatureDataUrl) continue;
@@ -1574,49 +1696,144 @@ app.post('/api/documents/:id/sign-recipient', async (req, res) => {
         const sigImage = await overlay.embedPng(sigBytes);
         const dims = sigImage.scale(Math.min(field.width / sigImage.width, field.height / sigImage.height));
         page.drawImage(sigImage, { x: field.x, y: field.y, width: dims.width, height: dims.height });
-        console.log('[RECIPIENT SIGN] Drew signature at', field.x, field.y);
       } else if (fieldValues[field.id]) {
         drawFieldText(page, font, fieldValues[field.id], field);
-        console.log('[RECIPIENT SIGN] Drew text "' + fieldValues[field.id] + '" in field at', field.x, field.y, 'w:', field.width, 'h:', field.height);
       }
     }
 
-    // Attestation footer
+    // Attestation footer. Single-signer: y=10 (existing behavior). Multi-signer:
+    // each signer gets a distinct line (y=10 + idx*8) so they don't overlap.
     const lastPage = overlay.getPage(overlay.getPageCount() - 1);
-    const attestText = `Digitally signed by ${doc.recipient_name} on ${new Date().toISOString()} | IP: ${req.ip}`;
-    lastPage.drawText(attestText, { x: 30, y: 10, size: 7, font, color: rgb(0.4, 0.4, 0.4) });
+    const thisSignerName = signerIdx === 0 ? doc.recipient_name : extras[signerIdx - 1].name;
+    const attestText = `Digitally signed by ${thisSignerName} on ${new Date().toISOString()} | IP: ${req.ip}`;
+    const attestY = hasMultipleSigners ? (10 + signerIdx * 8) : 10;
+    lastPage.drawText(attestText, { x: 30, y: attestY, size: 7, font, color: rgb(0.4, 0.4, 0.4) });
 
-    // Save overlay and merge with original using qpdf
+    // Build a snapshot of all signers' status, marking THIS one as just-signed.
+    // Used to decide finalize-vs-notify-others without re-querying mid-flow.
+    const signerStatus = [
+      {
+        idx: 0,
+        name: doc.recipient_name,
+        email: doc.recipient_email,
+        signed: signerIdx === 0 ? true : !!doc.recipient_completed_at
+      },
+      ...extras.map((s, i) => ({
+        idx: i + 1,
+        name: s.name,
+        email: s.email,
+        signed: (signerIdx === i + 1) ? true : !!s.signed_at
+      }))
+    ];
+    const isLastSigner = signerStatus.every(s => s.signed);
     const overlayPath = doc.pdf_path + '.overlay.pdf';
-    const finalPath = path.join(__dirname, 'signed', `${doc.id}-final.pdf`);
     fs.writeFileSync(overlayPath, await overlay.save());
-    execSync(`qpdf "${doc.pdf_path}" --overlay "${overlayPath}" -- "${finalPath}"`);
+
+    if (isLastSigner) {
+      // Finalize: stamp into signed/{id}-final.pdf
+      const finalPath = path.join(__dirname, 'signed', `${doc.id}-final.pdf`);
+      execSync(`qpdf "${doc.pdf_path}" --overlay "${overlayPath}" -- "${finalPath}"`);
+      fs.unlinkSync(overlayPath);
+
+      if (signerIdx === 0) {
+        db.prepare(`
+          UPDATE documents SET status = 'completed', recipient_completed_at = datetime('now'), ip_recipient = ?, final_pdf_path = ?
+          WHERE id = ?
+        `).run(req.ip, finalPath, doc.id);
+      } else {
+        extras[signerIdx - 1].signed_at = new Date().toISOString();
+        extras[signerIdx - 1].ip = req.ip;
+        db.prepare(`
+          UPDATE documents SET status = 'completed', extra_signers = ?, final_pdf_path = ?
+          WHERE id = ?
+        `).run(JSON.stringify(extras), finalPath, doc.id);
+      }
+
+      // Email all parties the completed document
+      const attachment = { filename: `${doc.title} - Signed.pdf`, path: finalPath };
+      const allRecipientNames = [doc.recipient_name, ...extras.map(s => s.name)].filter(Boolean).join(', ');
+
+      try {
+        await sendEmail(
+          doc.sender_email,
+          `Signed: ${doc.title}`,
+          emailTemplates.documentSigned(doc.sender_name, allRecipientNames, doc.title),
+          [attachment]
+        );
+      } catch (e) { console.error('Failed to email sender completion copy:', e); }
+      try {
+        await sendEmail(
+          doc.recipient_email,
+          `Signed: ${doc.title}`,
+          emailTemplates.documentCompleteRecipient(doc.recipient_name, doc.title),
+          [attachment]
+        );
+      } catch (e) { console.error('Failed to email primary recipient completion copy:', e); }
+      for (const s of extras) {
+        try {
+          await sendEmail(
+            s.email,
+            `Signed: ${doc.title}`,
+            emailTemplates.documentCompleteRecipient(s.name, doc.title),
+            [attachment]
+          );
+        } catch (mailErr) {
+          console.error(`Failed to email completion copy to ${s.email}:`, mailErr);
+        }
+      }
+
+      const completionMsg = hasMultipleSigners
+        ? 'Document fully executed. Copies sent to all parties.'
+        : 'Document fully executed. Copies sent to both parties.';
+      return res.json({ success: true, allSigned: true, message: completionMsg });
+    }
+
+    // Not the last signer — stamp in place, mark this signer signed, notify others.
+    const mergedPath = doc.pdf_path + '.merged.pdf';
+    execSync(`qpdf "${doc.pdf_path}" --overlay "${overlayPath}" -- "${mergedPath}"`);
+    fs.renameSync(mergedPath, doc.pdf_path);
     fs.unlinkSync(overlayPath);
 
-    // Update DB
-    db.prepare(`
-      UPDATE documents SET status = 'completed', recipient_completed_at = datetime('now'), ip_recipient = ?, final_pdf_path = ?
-      WHERE id = ?
-    `).run(req.ip, finalPath, doc.id);
+    if (signerIdx === 0) {
+      db.prepare(`
+        UPDATE documents SET recipient_completed_at = datetime('now'), ip_recipient = ?
+        WHERE id = ?
+      `).run(req.ip, doc.id);
+    } else {
+      extras[signerIdx - 1].signed_at = new Date().toISOString();
+      extras[signerIdx - 1].ip = req.ip;
+      db.prepare(`
+        UPDATE documents SET extra_signers = ?
+        WHERE id = ?
+      `).run(JSON.stringify(extras), doc.id);
+    }
 
-    // Email both parties the completed document
-    const attachment = { filename: `${doc.title} - Signed.pdf`, path: finalPath };
+    // Notify every OTHER signer who hasn't signed yet that this one just did.
+    const stillUnsigned = signerStatus.filter(s => !s.signed && s.idx !== signerIdx);
+    const totalSignedNow = signerStatus.filter(s => s.signed).length;
+    for (const u of stillUnsigned) {
+      const url = u.idx === 0
+        ? `${BASE_URL}/sign/${doc.id}?role=recipient`
+        : `${BASE_URL}/sign/${doc.id}?role=recipient&signer=${u.idx}`;
+      try {
+        await sendEmail(
+          u.email,
+          `${thisSignerName} just signed — your signature is still needed`,
+          emailTemplates.coSignerSigned(u.name, thisSignerName, doc.sender_name, doc.title, url)
+        );
+      } catch (mailErr) {
+        console.error(`Failed to notify ${u.email} that ${thisSignerName} signed:`, mailErr);
+      }
+    }
 
-    await sendEmail(
-      doc.sender_email,
-      `Signed: ${doc.title}`,
-      emailTemplates.documentSigned(doc.sender_name, doc.recipient_name, doc.title),
-      [attachment]
-    );
-
-    await sendEmail(
-      doc.recipient_email,
-      `Signed: ${doc.title}`,
-      emailTemplates.documentCompleteRecipient(doc.recipient_name, doc.title),
-      [attachment]
-    );
-
-    res.json({ success: true, message: 'Document fully executed. Copies sent to both parties.' });
+    res.json({
+      success: true,
+      allSigned: false,
+      signedCount: totalSignedNow,
+      totalSigners,
+      remainingSigners: stillUnsigned.map(u => ({ name: u.name, idx: u.idx })),
+      message: `Signature recorded. ${stillUnsigned.length === 1 ? `Waiting on ${stillUnsigned[0].name}` : `Waiting on ${stillUnsigned.length} more signer${stillUnsigned.length === 1 ? '' : 's'}`}.`
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -1651,19 +1868,47 @@ app.post('/api/documents/:id/remind', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Document has expired' });
     }
 
-    const signUrl = `${BASE_URL}/sign/${doc.id}?role=recipient`;
+    // Build the list of signers who haven't signed yet — remind all of them at once.
+    // (Parallel signing means there's no single "next" signer.)
+    const remindExtras = doc.extra_signers ? JSON.parse(doc.extra_signers) : [];
+    const unsigned = [];
+    if (!doc.recipient_completed_at) {
+      unsigned.push({ idx: 0, name: doc.recipient_name, email: doc.recipient_email });
+    }
+    remindExtras.forEach((s, i) => {
+      if (!s.signed_at) unsigned.push({ idx: i + 1, name: s.name, email: s.email });
+    });
+
+    if (unsigned.length === 0) {
+      return res.status(400).json({ error: 'All signers have already signed' });
+    }
+
     const daysSinceSent = Math.floor((Date.now() - new Date(doc.sender_completed_at).getTime()) / (1000 * 60 * 60 * 24));
     const expiresInDays = doc.expires_at ? Math.max(0, Math.ceil((new Date(doc.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : DOC_EXPIRY_DAYS;
 
-    await sendEmail(
-      doc.recipient_email,
-      `Reminder: ${doc.sender_name} is waiting for your signature`,
-      emailTemplates.signingReminder(doc.sender_name, doc.title, signUrl, daysSinceSent, expiresInDays)
-    );
+    let sentCount = 0;
+    for (const u of unsigned) {
+      const signUrl = u.idx === 0
+        ? `${BASE_URL}/sign/${doc.id}?role=recipient`
+        : `${BASE_URL}/sign/${doc.id}?role=recipient&signer=${u.idx}`;
+      try {
+        await sendEmail(
+          u.email,
+          `Reminder: ${doc.sender_name} is waiting for your signature`,
+          emailTemplates.signingReminder(doc.sender_name, doc.title, signUrl, daysSinceSent, expiresInDays)
+        );
+        sentCount++;
+      } catch (e) {
+        console.error(`Manual remind: failed to email ${u.email}:`, e);
+      }
+    }
 
     db.prepare("UPDATE documents SET last_reminder_at = datetime('now'), reminder_count = reminder_count + 1 WHERE id = ?").run(doc.id);
 
-    res.json({ success: true, message: `Reminder sent to ${doc.recipient_email}` });
+    const msg = sentCount === 1
+      ? `Reminder sent to ${unsigned[0].email}`
+      : `Reminders sent to ${sentCount} signer${sentCount === 1 ? '' : 's'}`;
+    res.json({ success: true, message: msg });
   } catch (err) {
     console.error('Remind error:', err);
     res.status(500).json({ error: 'Failed to send reminder' });
@@ -1847,7 +2092,8 @@ async function runDailyTasks() {
     // 3. Send automatic reminders for documents at 3, 7, and 25 days
     const awaitingDocs = db.prepare(`
       SELECT d.id, d.title, d.sender_name, d.sender_email, d.recipient_name, d.recipient_email,
-             d.sender_completed_at, d.expires_at, d.reminder_count, d.last_reminder_at
+             d.sender_completed_at, d.expires_at, d.reminder_count, d.last_reminder_at,
+             d.extra_signers, d.current_signer_index
       FROM documents d
       WHERE d.status = 'awaiting_recipient'
         AND d.sender_completed_at IS NOT NULL
@@ -1875,17 +2121,36 @@ async function runDailyTasks() {
       }
 
       if (shouldRemind) {
-        const signUrl = `${BASE_URL}/sign/${doc.id}?role=recipient`;
-        try {
-          await sendEmail(
-            doc.recipient_email,
-            `Reminder: ${doc.sender_name} is waiting for your signature`,
-            emailTemplates.signingReminder(doc.sender_name, doc.title, signUrl, daysSinceSent, expiresInDays)
-          );
+        // Fan out to every signer who hasn't signed yet (parallel signing).
+        const cronExtras = doc.extra_signers ? (() => { try { return JSON.parse(doc.extra_signers); } catch (e) { return []; } })() : [];
+        const cronUnsigned = [];
+        if (!doc.recipient_completed_at) {
+          cronUnsigned.push({ idx: 0, name: doc.recipient_name, email: doc.recipient_email });
+        }
+        cronExtras.forEach((s, i) => {
+          if (!s.signed_at) cronUnsigned.push({ idx: i + 1, name: s.name, email: s.email });
+        });
+        if (cronUnsigned.length === 0) continue; // safety: shouldn't happen if status is awaiting_recipient
+
+        let anySent = false;
+        for (const u of cronUnsigned) {
+          const signUrl = u.idx === 0
+            ? `${BASE_URL}/sign/${doc.id}?role=recipient`
+            : `${BASE_URL}/sign/${doc.id}?role=recipient&signer=${u.idx}`;
+          try {
+            await sendEmail(
+              u.email,
+              `Reminder: ${doc.sender_name} is waiting for your signature`,
+              emailTemplates.signingReminder(doc.sender_name, doc.title, signUrl, daysSinceSent, expiresInDays)
+            );
+            anySent = true;
+          } catch (e) {
+            console.error(`[CRON] Reminder email error for doc ${doc.id} signer ${u.idx}:`, e);
+          }
+        }
+        if (anySent) {
           db.prepare("UPDATE documents SET last_reminder_at = datetime('now'), reminder_count = reminder_count + 1 WHERE id = ?").run(doc.id);
           remindersSent++;
-        } catch (e) {
-          console.error(`[CRON] Reminder email error for doc ${doc.id}:`, e);
         }
       }
     }

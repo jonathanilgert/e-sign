@@ -1742,3 +1742,95 @@ input:focus, select:focus, textarea:focus {
     display: none;
   }
 }
+
+/* ===== Multi-signer support ===== */
+
+/* Each additional signer gets a distinct hue so fields are easy to tell apart.
+   signer-color-0 = primary recipient (matches the existing recipient orange).
+   signer-color-1, -2, -3 = additional signers. */
+.field-marker.recipient-0,
+.field-summary-item.recipient-0,
+.legend-dot.recipient-0,
+.target-cursor.recipient-0-mode {
+  /* same as the original .recipient — orange */
+}
+.field-marker.recipient-1 {
+  border-color: oklch(60% 0.18 280);
+  background: oklch(95% 0.04 280);
+  color: oklch(35% 0.14 280);
+}
+.field-marker.recipient-2 {
+  border-color: oklch(60% 0.18 200);
+  background: oklch(95% 0.04 200);
+  color: oklch(35% 0.14 200);
+}
+.field-marker.recipient-3 {
+  border-color: oklch(60% 0.18 340);
+  background: oklch(95% 0.04 340);
+  color: oklch(35% 0.14 340);
+}
+.field-summary-item.recipient-1 { background: oklch(95% 0.04 280); color: oklch(35% 0.14 280); }
+.field-summary-item.recipient-2 { background: oklch(95% 0.04 200); color: oklch(35% 0.14 200); }
+.field-summary-item.recipient-3 { background: oklch(95% 0.04 340); color: oklch(35% 0.14 340); }
+.legend-dot.recipient-1 { background: oklch(60% 0.18 280); }
+.legend-dot.recipient-2 { background: oklch(60% 0.18 200); }
+.legend-dot.recipient-3 { background: oklch(60% 0.18 340); }
+
+/* Extra-signer rows mirror .form-row exactly so they stack visually below the
+   primary recipient row. The only addition is a small × remove control. */
+.extra-signer-row {
+  position: relative;
+}
+.extra-signer-row .extra-signer-remove {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  background: transparent;
+  border: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  opacity: 0.55;
+}
+.extra-signer-row .extra-signer-remove:hover {
+  opacity: 1;
+  color: var(--danger, #c0392b);
+  background: oklch(96% 0.02 30);
+}
+.btn-add-signer {
+  background: transparent;
+  border: 1px dashed var(--ink-4, oklch(75% 0.02 60));
+  color: var(--ink-3);
+}
+.btn-add-signer:hover {
+  background: oklch(98% 0.02 60);
+  border-style: solid;
+}
+
+/* Multi-signer block in the send-confirm modal */
+#send-confirm-multi .send-confirm-signer {
+  padding: 8px 0;
+  border-bottom: 1px solid oklch(94% 0.01 60);
+}
+#send-confirm-multi .send-confirm-signer:last-child { border-bottom: none; }
+#send-confirm-multi .send-confirm-signer-tag {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  margin-bottom: 2px;
+}
+
+/* Dashboard signer-progress badge */
+.signer-progress {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: oklch(94% 0.02 60);
+  color: oklch(40% 0.10 60);
+  margin-left: 6px;
+}

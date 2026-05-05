@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Penned</title>
-  <link rel="stylesheet" href="/style.css?v=13">
+  <link rel="stylesheet" href="/style.css?v=15">
 </head>
 <body>
   <!-- Top nav -->
@@ -156,13 +156,19 @@
         <div class="form-row">
           <div class="form-group">
             <label for="recipient-name">Recipient Name</label>
-            <input type="text" id="recipient-name" placeholder="Tenant's full legal name">
+            <input type="text" id="recipient-name" placeholder="Full legal name">
           </div>
           <div class="form-group">
             <label for="recipient-email">Recipient Email</label>
-            <input type="email" id="recipient-email" placeholder="tenant@example.com">
+            <input type="email" id="recipient-email" placeholder="recipient@example.com">
           </div>
         </div>
+
+        <!-- Extra signers stack below the primary recipient using the same form-row
+             layout. Up to 4 extras beyond the primary. Empty by default; the
+             single-recipient flow remains unchanged. -->
+        <div id="extra-signers-list"></div>
+        <button type="button" class="btn btn-sm btn-add-signer" id="btn-add-signer" style="margin-bottom:14px">+ Add another signer</button>
 
         <div class="review-note" id="review-note-pre">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -243,20 +249,25 @@
   <!-- Send confirmation modal — final check before recipient is emailed -->
   <div class="send-confirm-overlay" id="send-confirm-modal" style="display:none">
     <div class="send-confirm-dialog">
-      <h3>Send to recipient?</h3>
-      <p class="send-confirm-sub">Once you confirm, this document goes straight to the recipient's inbox.</p>
+      <h3 id="send-confirm-heading">Send to recipient?</h3>
+      <p class="send-confirm-sub" id="send-confirm-sub">Once you confirm, this document goes straight to the recipient's inbox.</p>
       <div class="send-confirm-row">
         <div class="send-confirm-label">Document</div>
         <div class="send-confirm-value" id="send-confirm-doc-title"></div>
       </div>
-      <div class="send-confirm-row">
-        <div class="send-confirm-label">To</div>
-        <div class="send-confirm-value"><strong id="send-confirm-recipient-name"></strong></div>
+      <!-- Single-recipient layout (hidden when multi-signer) -->
+      <div id="send-confirm-single">
+        <div class="send-confirm-row">
+          <div class="send-confirm-label">To</div>
+          <div class="send-confirm-value"><strong id="send-confirm-recipient-name"></strong></div>
+        </div>
+        <div class="send-confirm-row">
+          <div class="send-confirm-label">Email</div>
+          <div class="send-confirm-value"><strong id="send-confirm-recipient-email"></strong></div>
+        </div>
       </div>
-      <div class="send-confirm-row">
-        <div class="send-confirm-label">Email</div>
-        <div class="send-confirm-value"><strong id="send-confirm-recipient-email"></strong></div>
-      </div>
+      <!-- Multi-signer layout — populated by app.js -->
+      <div id="send-confirm-multi" style="display:none"></div>
       <label class="send-confirm-template">
         <input type="checkbox" id="send-confirm-save-template" />
         <span>Save this as a reusable template for future use</span>
@@ -274,6 +285,6 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   </script>
   <div class="target-cursor" id="target-cursor"></div>
-  <script src="/app.js?v=13"></script>
+  <script src="/app.js?v=15"></script>
 </body>
 </html>

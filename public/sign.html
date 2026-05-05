@@ -161,12 +161,29 @@
     const docId = window.location.pathname.split('/').pop();
     const urlParams = new URLSearchParams(window.location.search);
     const role = urlParams.get('role') || 'sender';
+    // For multi-signer docs, recipient links carry &signer=N. Defaults to 0 (primary
+    // recipient), which is also the value old single-signer links resolve to.
+    const signerIdxParam = urlParams.get('signer');
+    const signerIdx = signerIdxParam !== null && !isNaN(parseInt(signerIdxParam, 10))
+      ? parseInt(signerIdxParam, 10) : 0;
 
     let doc = null;
     let pdfDoc = null;
     let currentPage = 1;
     let sigCanvas, sigCtx, isDrawing = false;
     const savedFieldValues = {}; // Persist field values across page navigation
+
+    // Returns true if a doc field belongs to whoever is currently viewing the sign page.
+    // Sender role: all sender fields. Recipient role: fields tagged with the matching
+    // signer_index (or all recipient fields when the doc has no extra signers — back-compat).
+    function fieldIsMine(field) {
+      if (role === 'sender') return field.role === 'sender';
+      if (field.role !== 'recipient') return false;
+      const hasExtras = Array.isArray(doc && doc.extra_signers) && doc.extra_signers.length > 0;
+      if (!hasExtras) return true;
+      const fIdx = typeof field.signer_index === 'number' ? field.signer_index : 0;
+      return fIdx === signerIdx;
+    }
 
     // --------------- Init ---------------
     document.addEventListener('DOMContentLoaded', async () => {
@@ -209,8 +226,34 @@
         return;
       }
 
-      const signerName = role === 'sender' ? doc.sender_name : doc.recipient_name;
-      document.getElementById('doc-subtitle').textContent = `Signing as: ${signerName}`;
+      // Multi-signer (parallel) guard: any signer who hasn't signed yet can sign
+      // at any time. We only block invalid indices and already-signed signers.
+      const extras = Array.isArray(doc.extra_signers) ? doc.extra_signers : [];
+      const totalSigners = 1 + extras.length;
+      if (role === 'recipient') {
+        if (signerIdx < 0 || signerIdx >= totalSigners) {
+          document.getElementById('doc-subtitle').textContent = 'This signing link is invalid.';
+          document.getElementById('btn-submit').style.display = 'none';
+          return;
+        }
+        const alreadySigned = signerIdx === 0
+          ? !!doc.recipient_completed_at
+          : !!(extras[signerIdx - 1] && extras[signerIdx - 1].signed_at);
+        if (alreadySigned) {
+          document.getElementById('doc-subtitle').textContent = 'You have already signed this document. Awaiting other signers.';
+          document.getElementById('btn-submit').style.display = 'none';
+          return;
+        }
+      }
+
+      let signerName;
+      if (role === 'sender') signerName = doc.sender_name;
+      else if (signerIdx === 0) signerName = doc.recipient_name;
+      else signerName = (extras[signerIdx - 1] && extras[signerIdx - 1].name) || 'Signer';
+      const signerSubtitle = (role === 'recipient' && totalSigners > 1)
+        ? `Signing as: ${signerName} (${signerIdx + 1} of ${totalSigners})`
+        : `Signing as: ${signerName}`;
+      document.getElementById('doc-subtitle').textContent = signerSubtitle;
       document.getElementById('signer-name-display').textContent = signerName;
 
       // Check for pre-filled values from a saved template
@@ -279,7 +322,7 @@
       container.querySelectorAll('.inline-field-overlay').forEach(el => el.remove());
 
       if (!doc || !doc.fields) return;
-      const myFields = doc.fields.filter(f => f.role === role && f.page === pageNum - 1);
+      const myFields = doc.fields.filter(f => fieldIsMine(f) && f.page === pageNum - 1);
 
       myFields.forEach(field => {
         const overlay = document.createElement('div');
@@ -406,7 +449,7 @@
     // --------------- Build Field Inputs ---------------
     function buildFieldInputs() {
       const form = document.getElementById('fields-form');
-      const myFields = doc.fields.filter(f => f.role === role);
+      const myFields = doc.fields.filter(f => fieldIsMine(f));
 
       if (myFields.length === 0) {
         form.innerHTML = '<p class="hint">No fields to fill in. Just review and sign below.</p>';
@@ -527,7 +570,7 @@
         }
       });
 
-      const myFields = doc.fields.filter(f => f.role === role);
+      const myFields = doc.fields.filter(f => fieldIsMine(f));
       const fieldValues = {};
 
       for (const field of myFields) {
@@ -574,18 +617,29 @@
         // with how the token was generated above.
         // Senders may have resized their fields here; recipients can't, so don't send.
         const updatedFields = role === 'sender' ? doc.fields : undefined;
+        const reqBody = { fieldValues, signatureDataUrl, attestation: true, fields: updatedFields };
+        // Multi-signer: tell the server which signer this submission is for.
+        if (role === 'recipient') reqBody.signerIndex = signerIdx;
         const res = await fetch(`/api/documents/${docId}/${endpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify({ fieldValues, signatureDataUrl, attestation: true, fields: updatedFields })
+          body: JSON.stringify(reqBody)
         });
 
         const data = await res.json();
 
         if (data.success) {
+          // Multi-signer parallel: server tells us whether everyone has signed yet.
+          // If allSigned===false, show a "thanks, waiting on others" state instead
+          // of the fully-completed UI. allSigned is undefined for sender flow and
+          // for single-signer recipient flow — those go through the legacy path.
+          if (role === 'recipient' && data.allSigned === false) {
+            showAwaitingOthersState(data);
+            return;
+          }
           if (role === 'sender') {
             // Offer to save as reusable template
-            if (confirm('Document sent! Would you like to save this as a reusable template?\n\nThis saves your field layout, filled-in details, and signature so you can send to new tenants with one click.')) {
+            if (confirm('Document sent! Would you like to save this as a reusable template?\n\nThis saves your field layout, filled-in details, and signature so you can send to new recipients with one click.')) {
               const templateName = prompt('Name this template:', doc.title || 'My Lease Template');
               if (templateName) {
                 // Pass the doc's PDF path so the server snapshots the PDF into templates/saved/.
@@ -637,7 +691,7 @@
       document.querySelectorAll('.inline-field-overlay input, .inline-field-overlay textarea').forEach(input => {
         if (input.id && input.id.startsWith('input-')) savedFieldValues[input.id] = input.value;
       });
-      const myFields = doc.fields.filter(f => f.role === role);
+      const myFields = doc.fields.filter(f => fieldIsMine(f));
       for (const field of myFields) {
         if (field.type === 'signature') continue;
         const inputId = `input-${field.id}`;
@@ -696,18 +750,54 @@
       document.getElementById('download-link').style.display = 'none';
     }
 
+    // Recipient just signed in a multi-signer doc, but other signers still need
+    // to sign. Show a thank-you / waiting state instead of the fully-completed UI.
+    function showAwaitingOthersState(data) {
+      document.getElementById('sign-section').style.display = 'none';
+      const completedEl = document.getElementById('completed-section');
+      completedEl.style.display = '';
+      const heading = completedEl.querySelector('h2');
+      if (heading) heading.textContent = 'Signature Recorded';
+      const remaining = Array.isArray(data.remainingSigners) ? data.remainingSigners : [];
+      const remainingNames = remaining.map(r => r.name).filter(Boolean).join(', ');
+      const countText = (typeof data.signedCount === 'number' && typeof data.totalSigners === 'number')
+        ? ` (${data.signedCount} of ${data.totalSigners} signed so far)`
+        : '';
+      document.getElementById('completed-message').textContent =
+        remainingNames
+          ? `Thanks for signing! Still waiting on ${remainingNames}${countText}. They've been notified that you signed — you'll receive the final copy by email once everyone has signed.`
+          : `Thanks for signing! Other signers still need to sign${countText}. You'll receive the final copy by email once everyone has signed.`;
+      // Hide the download link — the final PDF only exists once everyone has signed.
+      const dl = document.getElementById('download-link');
+      if (dl) dl.style.display = 'none';
+    }
+
     function showWaitingState() {
       document.getElementById('sign-section').style.display = 'none';
       document.getElementById('waiting-section').style.display = '';
-      document.getElementById('waiting-message').textContent =
-        `Your document has been sent to ${doc.recipient_name} (${doc.recipient_email}) for signing. You'll receive a copy once they complete it.`;
+      const extras = Array.isArray(doc.extra_signers) ? doc.extra_signers : [];
+      if (extras.length === 0) {
+        document.getElementById('waiting-message').textContent =
+          `Your document has been sent to ${doc.recipient_name} (${doc.recipient_email}) for signing. You'll receive a copy once they complete it.`;
+      } else {
+        const allNames = [doc.recipient_name, ...extras.map(s => s.name)].filter(Boolean).join(', ');
+        document.getElementById('waiting-message').textContent =
+          `Your document has been sent for signing to: ${allNames}. They'll sign in order. You'll receive a copy once everyone has signed.`;
+      }
     }
 
     function showCompletedState() {
       document.getElementById('sign-section').style.display = 'none';
       document.getElementById('completed-section').style.display = '';
-      document.getElementById('completed-message').textContent =
-        `Both ${doc.sender_name} and ${doc.recipient_name} have signed this document. A copy has been emailed to both parties.`;
+      const extras = Array.isArray(doc.extra_signers) ? doc.extra_signers : [];
+      if (extras.length === 0) {
+        document.getElementById('completed-message').textContent =
+          `Both ${doc.sender_name} and ${doc.recipient_name} have signed this document. A copy has been emailed to both parties.`;
+      } else {
+        const allNames = [doc.sender_name, doc.recipient_name, ...extras.map(s => s.name)].filter(Boolean).join(', ');
+        document.getElementById('completed-message').textContent =
+          `${allNames} have all signed this document. A copy has been emailed to all parties.`;
+      }
       document.getElementById('download-link').href = `/api/documents/${docId}/pdf`;
     }
 
