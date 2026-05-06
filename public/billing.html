@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Billing - Penned</title>
+  <link rel="stylesheet" href="/style.css?v=15">
+  <style>
+    .billing-layout {
+      max-width: 720px;
+      margin: 24px auto;
+      padding: 0 20px;
+    }
+    .billing-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--ink-3);
+      text-decoration: none;
+      font-size: 14px;
+      margin-bottom: 20px;
+      transition: color 0.15s;
+    }
+    .billing-back:hover { color: var(--ink); }
+    .billing-title {
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      margin-bottom: 24px;
+      color: var(--ink);
+    }
+    .billing-section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      padding: 28px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 2px rgba(20, 30, 40, 0.03);
+    }
+    .billing-section h3 {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.012em;
+      margin-bottom: 4px;
+      color: var(--ink);
+    }
+    .billing-section .section-desc {
+      font-size: 13.5px;
+      color: var(--ink-3);
+      margin-bottom: 20px;
+    }
+
+    /* Plan card */
+    .plan-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--tint-warm);
+      margin-bottom: 20px;
+    }
+    .plan-card.plan-unlimited {
+      background: var(--accent-tint);
+      border-color: color-mix(in oklch, var(--accent) 25%, var(--line));
+    }
+    .plan-name {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      color: var(--ink);
+    }
+    .plan-detail {
+      font-size: 13px;
+      color: var(--ink-3);
+      margin-top: 3px;
+    }
+    .plan-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    /* Buttons */
+    .b-btn {
+      padding: 9px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      background: var(--paper);
+      color: var(--ink);
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform 0.12s, background 0.15s, border-color 0.15s, color 0.15s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+    .b-btn:hover { border-color: var(--ink-4); }
+    .b-btn-primary {
+      background: var(--ink);
+      color: var(--bg);
+      border-color: var(--ink);
+      box-shadow: 0 1px 0 0 rgba(255,255,255,0.15) inset, 0 1px 2px rgba(0,0,0,0.10);
+    }
+    .b-btn-primary:hover {
+      background: var(--accent-deep);
+      border-color: var(--accent-deep);
+      transform: translateY(-1px);
+    }
+    .b-btn-primary:active { transform: translateY(0); }
+    .b-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    /* Usage bar */
+    .usage-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 13.5px;
+      color: var(--ink-2);
+    }
+    .usage-bar-track {
+      height: 6px;
+      background: var(--line-2);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .usage-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 99px;
+      transition: width 0.4s ease;
+    }
+    .usage-bar-fill.usage-full { background: var(--danger); }
+    .usage-reset {
+      font-size: 12px;
+      color: var(--ink-3);
+    }
+
+    /* Billing history */
+    .history-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line-2);
+      font-size: 13px;
+    }
+    .history-row:last-child { border-bottom: none; }
+    .history-type { font-weight: 500; color: var(--ink); }
+    .history-desc { color: var(--ink-3); font-size: 12px; margin-top: 2px; }
+    .history-amount { font-weight: 600; color: var(--ink); }
+    .history-date { color: var(--ink-3); font-size: 12px; margin-top: 2px; text-align: right; }
+    .history-empty {
+      text-align: center;
+      padding: 28px 0;
+      color: var(--ink-3);
+      font-size: 13.5px;
+    }
+
+    /* Upgrade CTA banner */
+    .upgrade-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 20px 24px;
+      background: var(--ink);
+      color: var(--bg);
+      border-radius: 14px;
+      margin-bottom: 20px;
+    }
+    .upgrade-banner-text h4 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.012em;
+      margin-bottom: 4px;
+    }
+    .upgrade-banner-text p {
+      font-size: 13px;
+      opacity: 0.65;
+    }
+    .b-btn-upgrade {
+      background: var(--bg);
+      color: var(--ink);
+      border: none;
+      padding: 10px 22px;
+      border-radius: var(--r);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      flex-shrink: 0;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      transition: opacity 0.15s, transform 0.12s;
+    }
+    .b-btn-upgrade:hover { opacity: 0.88; transform: translateY(-1px); }
+    .b-btn-upgrade:active { transform: translateY(0); }
+    .b-btn-upgrade:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    @media (max-width: 600px) {
+      .plan-card { flex-direction: column; align-items: flex-start; gap: 14px; }
+      .upgrade-banner { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="top-nav">
+    <div class="nav-inner">
+      <a href="/dashboard" class="nav-logo">
+        <span class="brand-mark">P</span>
+        <span class="brand-name">Penned</span>
+      </a>
+      <div class="nav-right">
+        <span class="plan-badge" id="nav-plan-badge"></span>
+        <div class="nav-user" id="nav-user">
+          <button class="nav-user-btn" id="nav-user-btn">
+            <span class="nav-avatar" id="nav-avatar"></span>
+            <span class="nav-user-name" id="nav-user-name"></span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="margin-left:4px;opacity:0.5"><path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="nav-dropdown" id="nav-dropdown">
+            <a href="/settings" class="nav-dropdown-item">Settings</a>
+            <a href="/billing" class="nav-dropdown-item">Billing</a>
+            <div class="nav-dropdown-divider"></div>
+            <a href="#" class="nav-dropdown-item nav-dropdown-danger" id="menu-logout">Sign out</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="billing-layout">
+    <a href="/dashboard" class="billing-back">&larr; Back to Dashboard</a>
+    <h1 class="billing-title">Billing</h1>
+
+    <!-- Current Plan -->
+    <section class="billing-section" id="section-plan">
+      <h3>Current Plan</h3>
+      <p class="section-desc">Your active plan and monthly usage.</p>
+
+      <div class="plan-card" id="plan-card">
+        <div>
+          <div class="plan-name" id="plan-name">—</div>
+          <div class="plan-detail" id="plan-detail"></div>
+        </div>
+        <div class="plan-actions" id="plan-actions"></div>
+      </div>
+
+      <!-- Usage bar (free/payg only) -->
+      <div id="usage-section" style="display:none">
+        <div class="usage-row">
+          <span id="usage-label">Documents sent this month</span>
+          <span id="usage-count"></span>
+        </div>
+        <div class="usage-bar-track">
+          <div class="usage-bar-fill" id="usage-bar"></div>
+        </div>
+        <div class="usage-reset" id="usage-reset"></div>
+      </div>
+    </section>
+
+    <!-- Upgrade banner (free/payg only) -->
+    <div class="upgrade-banner" id="upgrade-banner" style="display:none">
+      <div class="upgrade-banner-text">
+        <h4>Go Unlimited for $7/mo</h4>
+        <p>Unlimited documents, custom branding, bulk send — no surprises.</p>
+      </div>
+      <button class="b-btn-upgrade" id="btn-upgrade">Upgrade now</button>
+    </div>
+
+    <!-- Billing History -->
+    <section class="billing-section" id="section-history">
+      <h3>Billing History</h3>
+      <p class="section-desc">Your recent charges and payments.</p>
+      <div id="billing-history-list"><div class="history-empty">Loading...</div></div>
+    </section>
+  </div>
+
+  <script>
+    let _csrf = null;
+    function getToken() { return localStorage.getItem('esign_token'); }
+    function authHeaders() {
+      const h = { 'Authorization': 'Bearer ' + getToken() };
+      if (_csrf) h['X-CSRF-Token'] = _csrf;
+      return h;
+    }
+    async function authFetch(url, opts = {}) {
+      if (!_csrf) {
+        try { const r = await fetch('/api/csrf-token', { headers: { 'Authorization': 'Bearer ' + getToken() } }); _csrf = (await r.json()).token; } catch (e) {}
+      }
+      opts.headers = { ...authHeaders(), ...(opts.headers || {}) };
+      const r = await fetch(url, opts);
+      if (r.status === 401) { localStorage.clear(); window.location.href = '/login'; throw new Error('expired'); }
+      return r;
+    }
+
+    function showToast(msg) {
+      const existing = document.querySelector('.toast');
+      if (existing) existing.remove();
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 3500);
+    }
+
+    function setupNav(settings) {
+      document.getElementById('nav-user-name').textContent = settings.name;
+      document.getElementById('nav-avatar').textContent = (settings.name || 'U').charAt(0).toUpperCase();
+      const badge = document.getElementById('nav-plan-badge');
+      if (settings.plan_type === 'unlimited') {
+        badge.textContent = 'PRO'; badge.className = 'plan-badge plan-pro';
+      } else {
+        badge.textContent = 'FREE'; badge.className = 'plan-badge plan-free';
+      }
+      const btn = document.getElementById('nav-user-btn');
+      const dropdown = document.getElementById('nav-dropdown');
+      btn.addEventListener('click', (e) => { e.stopPropagation(); dropdown.classList.toggle('open'); });
+      document.addEventListener('click', () => dropdown.classList.remove('open'));
+      document.getElementById('menu-logout').addEventListener('click', (e) => {
+        e.preventDefault();
+        const token = getToken();
+        if (token) fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } });
+        localStorage.clear();
+        window.location.href = '/login';
+      });
+    }
+
+    function renderPlan(s) {
+      const planLabels = { free: 'Free', pay_per_doc: 'Pay as you go', unlimited: 'Unlimited' };
+      const planDetails = {
+        free: '3 documents per month, no credit card required',
+        pay_per_doc: '$1.99 per document sent',
+        unlimited: 'Unlimited documents · $7 / month'
+      };
+
+      const card = document.getElementById('plan-card');
+      const isUnlimited = s.plan_type === 'unlimited';
+      if (isUnlimited) card.classList.add('plan-unlimited');
+
+      document.getElementById('plan-name').textContent = planLabels[s.plan_type] || 'Free';
+      document.getElementById('plan-detail').textContent = planDetails[s.plan_type] || '';
+
+      const actions = document.getElementById('plan-actions');
+      if (!isUnlimited) {
+        const upgradeBtn = document.createElement('button');
+        upgradeBtn.className = 'b-btn b-btn-primary';
+        upgradeBtn.id = 'btn-upgrade-card';
+        upgradeBtn.textContent = 'Upgrade to Unlimited';
+        actions.appendChild(upgradeBtn);
+        upgradeBtn.addEventListener('click', startUpgrade);
+      }
+      if (s.stripe_customer_id) {
+        const manageBtn = document.createElement('button');
+        manageBtn.className = 'b-btn';
+        manageBtn.id = 'btn-manage';
+        manageBtn.textContent = 'Manage Billing';
+        actions.appendChild(manageBtn);
+        manageBtn.addEventListener('click', openPortal);
+      }
+
+      // Usage bar
+      if (!isUnlimited) {
+        const limit = 3;
+        const used = s.documents_sent_this_month || 0;
+        const pct = Math.min(100, Math.round((used / limit) * 100));
+        document.getElementById('usage-label').textContent = 'Documents sent this month';
+        document.getElementById('usage-count').textContent = `${used} / ${limit}`;
+        const bar = document.getElementById('usage-bar');
+        bar.style.width = pct + '%';
+        if (pct >= 100) bar.classList.add('usage-full');
+        if (s.monthly_reset_date) {
+          const reset = new Date(s.monthly_reset_date);
+          document.getElementById('usage-reset').textContent = `Resets on ${reset.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`;
+        }
+        document.getElementById('usage-section').style.display = '';
+        document.getElementById('upgrade-banner').style.display = '';
+      }
+    }
+
+    async function startUpgrade(e) {
+      const btn = e.currentTarget;
+      const bannerBtn = document.getElementById('btn-upgrade');
+      btn.disabled = true; btn.textContent = 'Redirecting...';
+      if (bannerBtn) { bannerBtn.disabled = true; bannerBtn.textContent = 'Redirecting...'; }
+      try {
+        const res = await authFetch('/api/billing/create-checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (data.url) { window.location.href = data.url; }
+        else {
+          showToast(data.error || 'Failed to start checkout');
+          btn.disabled = false; btn.textContent = 'Upgrade to Unlimited';
+          if (bannerBtn) { bannerBtn.disabled = false; bannerBtn.textContent = 'Upgrade now'; }
+        }
+      } catch (e) {
+        showToast('Failed to connect');
+        btn.disabled = false; btn.textContent = 'Upgrade to Unlimited';
+        if (bannerBtn) { bannerBtn.disabled = false; bannerBtn.textContent = 'Upgrade now'; }
+      }
+    }
+
+    async function openPortal() {
+      const btn = document.getElementById('btn-manage');
+      btn.disabled = true; btn.textContent = 'Loading...';
+      try {
+        const res = await authFetch('/api/billing/portal');
+        const data = await res.json();
+        if (data.url) { window.location.href = data.url; }
+        else { showToast(data.error || 'Failed to open billing portal'); btn.disabled = false; btn.textContent = 'Manage Billing'; }
+      } catch (e) { showToast('Failed to connect'); btn.disabled = false; btn.textContent = 'Manage Billing'; }
+    }
+
+    async function loadHistory() {
+      try {
+        const res = await authFetch('/api/billing/history');
+        const history = (await res.json()).slice(0, 20);
+        const list = document.getElementById('billing-history-list');
+        if (!history.length) {
+          list.innerHTML = '<div class="history-empty">No billing history yet.</div>';
+          return;
+        }
+        const typeLabels = { subscription: 'Unlimited Plan', subscription_renewal: 'Plan Renewal', per_document: 'Pay per Document' };
+        list.innerHTML = history.map(h => {
+          const date = new Date(h.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+          const amount = '$' + (h.amount_cents / 100).toFixed(2);
+          return `<div class="history-row">
+            <div>
+              <div class="history-type">${typeLabels[h.type] || h.type}</div>
+              ${h.description ? `<div class="history-desc">${h.description}</div>` : ''}
+            </div>
+            <div style="text-align:right">
+              <div class="history-amount">${amount}</div>
+              <div class="history-date">${date}</div>
+            </div>
+          </div>`;
+        }).join('');
+      } catch (e) {
+        document.getElementById('billing-history-list').innerHTML = '<div class="history-empty">Could not load history.</div>';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      if (!getToken()) { window.location.href = '/login'; return; }
+
+      let settings;
+      try {
+        const res = await authFetch('/api/settings');
+        if (!res.ok) { window.location.href = '/login'; return; }
+        settings = await res.json();
+      } catch (e) { window.location.href = '/login'; return; }
+
+      setupNav(settings);
+      renderPlan(settings);
+      loadHistory();
+
+      // Banner upgrade button
+      document.getElementById('btn-upgrade').addEventListener('click', startUpgrade);
+
+      // Handle return from Stripe
+      const params = new URLSearchParams(window.location.search);
+      const billing = params.get('billing');
+      if (billing === 'unlimited_success') {
+        showToast('Welcome to Unlimited! Your plan has been upgraded.');
+        window.history.replaceState({}, '', '/billing');
+      } else if (billing === 'cancelled') {
+        showToast('Checkout cancelled.');
+        window.history.replaceState({}, '', '/billing');
+      }
+    });
+  </script>
+</body>
+</html>

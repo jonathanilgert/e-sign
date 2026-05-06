@@ -228,29 +228,6 @@
     }
     .logo-actions input[type="file"] { display: none; }
 
-    /* Plan display */
-    .plan-card {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 18px 22px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: var(--tint-warm);
-      margin-bottom: 16px;
-    }
-    .plan-name {
-      font-size: 18px;
-      font-weight: 600;
-      letter-spacing: -0.012em;
-      color: var(--ink);
-    }
-    .plan-detail {
-      font-size: 13px;
-      color: var(--ink-3);
-      margin-top: 2px;
-    }
-
     /* Delete modal */
     .modal-overlay {
       position: fixed;
@@ -320,7 +297,7 @@
           </button>
           <div class="nav-dropdown" id="nav-dropdown">
             <a href="/settings" class="nav-dropdown-item">Settings</a>
-            <a href="/settings#account" class="nav-dropdown-item">Billing</a>
+            <a href="/billing" class="nav-dropdown-item">Billing</a>
             <div class="nav-dropdown-divider"></div>
             <a href="#" class="nav-dropdown-item nav-dropdown-danger" id="menu-logout">Sign out</a>
           </div>
@@ -427,27 +404,8 @@
       </div>
     </section>
 
-    <!-- ===== Account ===== -->
+    <!-- ===== Danger Zone ===== -->
     <section class="settings-section" id="account">
-      <h3>Account</h3>
-      <p class="section-desc">Manage your plan and account.</p>
-      <div class="plan-card">
-        <div>
-          <div class="plan-name" id="plan-name">Free</div>
-          <div class="plan-detail" id="plan-detail">3 documents per month</div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="s-btn s-btn-primary" id="btn-upgrade" style="display:none">Upgrade to Unlimited</button>
-          <button class="s-btn" id="btn-manage-billing" style="display:none">Manage Billing</button>
-        </div>
-      </div>
-      <div id="billing-history-section" style="display:none;margin-top:20px">
-        <h4 style="font-size:14px;font-weight:600;margin-bottom:12px">Billing History</h4>
-        <div id="billing-history-list"></div>
-      </div>
-
-      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
-
       <h3 style="color:var(--danger)">Danger Zone</h3>
       <p class="section-desc">Permanently delete your account and all associated data. This cannot be undone.</p>
       <button class="s-btn s-btn-danger" id="btn-delete-account">Delete Account</button>
@@ -537,30 +495,9 @@
         showLogo('/' + settings.logo_path);
       }
 
-      // Account
-      const planLabels = { free: 'Free', pay_per_doc: 'Pay Per Document', unlimited: 'Unlimited' };
-      const planDetails = {
-        free: `${settings.documents_sent_this_month} of 3 free documents used this month`,
-        pay_per_doc: '$1.99 per document',
-        unlimited: 'Unlimited documents — $7/mo'
-      };
-      document.getElementById('plan-name').textContent = planLabels[settings.plan_type] || 'Free';
-      document.getElementById('plan-detail').textContent = planDetails[settings.plan_type] || '';
-
-      // Show upgrade button for free/pay-per-doc users, manage billing for those with a Stripe customer
-      if (settings.plan_type !== 'unlimited') {
-        document.getElementById('btn-upgrade').style.display = '';
-      }
-      if (settings.stripe_customer_id) {
-        document.getElementById('btn-manage-billing').style.display = '';
-      }
-
       if (settings.created_at) {
         document.getElementById('member-since').textContent = 'Member since ' + new Date(settings.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
       }
-
-      // Load billing history
-      loadBillingHistory();
 
       // Scroll to hash section if present
       if (window.location.hash) {
@@ -687,32 +624,6 @@
         btn.disabled = false; btn.textContent = 'Save Branding';
       });
 
-      // Upgrade to unlimited
-      document.getElementById('btn-upgrade').addEventListener('click', async () => {
-        const btn = document.getElementById('btn-upgrade');
-        btn.disabled = true; btn.textContent = 'Redirecting...';
-        try {
-          const res = await authFetch('/api/billing/create-checkout', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }
-          });
-          const data = await res.json();
-          if (data.url) { window.location.href = data.url; }
-          else { showToast(data.error || 'Failed to start checkout'); btn.disabled = false; btn.textContent = 'Upgrade to Unlimited'; }
-        } catch (e) { showToast('Failed to connect'); btn.disabled = false; btn.textContent = 'Upgrade to Unlimited'; }
-      });
-
-      // Manage billing (Stripe portal)
-      document.getElementById('btn-manage-billing').addEventListener('click', async () => {
-        const btn = document.getElementById('btn-manage-billing');
-        btn.disabled = true; btn.textContent = 'Loading...';
-        try {
-          const res = await authFetch('/api/billing/portal');
-          const data = await res.json();
-          if (data.url) { window.location.href = data.url; }
-          else { showToast(data.error || 'Failed to open billing portal'); btn.disabled = false; btn.textContent = 'Manage Billing'; }
-        } catch (e) { showToast('Failed to connect'); btn.disabled = false; btn.textContent = 'Manage Billing'; }
-      });
-
       // Delete account
       document.getElementById('btn-delete-account').addEventListener('click', () => {
         document.getElementById('delete-modal').classList.add('open');
@@ -755,32 +666,6 @@
         }
       });
     });
-
-    // ===== Billing history =====
-    async function loadBillingHistory() {
-      try {
-        const res = await authFetch('/api/billing/history');
-        const history = (await res.json()).slice(0, 10);
-        if (!history.length) return;
-        document.getElementById('billing-history-section').style.display = '';
-        const list = document.getElementById('billing-history-list');
-        const typeLabels = { subscription: 'Subscription', subscription_renewal: 'Renewal', per_document: 'Per Document' };
-        list.innerHTML = history.map(h => {
-          const date = new Date(h.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-          const amount = '$' + (h.amount_cents / 100).toFixed(2);
-          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
-            <div>
-              <span style="font-weight:500">${typeLabels[h.type] || h.type}</span>
-              <span style="color:var(--muted);margin-left:8px">${h.description || ''}</span>
-            </div>
-            <div style="display:flex;gap:16px;align-items:center">
-              <span style="font-weight:600">${amount}</span>
-              <span style="color:var(--muted)">${date}</span>
-            </div>
-          </div>`;
-        }).join('');
-      } catch (e) { /* non-critical */ }
-    }
 
     // ===== Logo helpers =====
     function showLogo(src) {

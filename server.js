@@ -2002,6 +2002,11 @@ app.get('/settings', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'settings.html'));
 });
 
+// Billing page
+app.get('/billing', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'billing.html'));
+});
+
 // Public signing page — no auth required
 app.get('/sign/:id', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'sign.html'));
