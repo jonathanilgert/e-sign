@@ -245,7 +245,7 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), (req
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
-        const userId = session.metadata?.user_id;
+        const userId = session.metadata?.user_id || session.client_reference_id;
         if (!userId) break;
         const custId = session.customer;
         const checkoutType = session.metadata?.type;
@@ -1241,39 +1241,16 @@ app.get('/api/billing/history', requireAuth, (req, res) => {
 });
 
 // Create Stripe Checkout session for Unlimited plan
-app.post('/api/billing/create-checkout', requireAuth, async (req, res) => {
-  if (!stripe) return res.status(500).json({ error: 'Stripe is not configured' });
-  if (!STRIPE_PRICE_ID_UNLIMITED) return res.status(500).json({ error: 'Unlimited plan price not configured' });
+const STRIPE_PAYMENT_LINK_UNLIMITED = 'https://buy.stripe.com/eVq7sL8pVgkk46NanS0gw00';
 
+app.post('/api/billing/create-checkout', requireAuth, (req, res) => {
   try {
-    const user = db.prepare('SELECT id, email, name, stripe_customer_id FROM users WHERE id = ?').get(req.user.id);
-
-    // Create or reuse Stripe customer
-    let customerId = user.stripe_customer_id;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        name: user.name,
-        metadata: { user_id: user.id }
-      });
-      customerId = customer.id;
-      db.prepare('UPDATE users SET stripe_customer_id = ? WHERE id = ?').run(customerId, user.id);
-    }
-
-    const session = await stripe.checkout.sessions.create({
-      customer: customerId,
-      mode: 'subscription',
-      line_items: [{ price: STRIPE_PRICE_ID_UNLIMITED, quantity: 1 }],
-      allow_promotion_codes: true,
-      success_url: `${BASE_URL}/dashboard?billing=unlimited_success`,
-      cancel_url: `${BASE_URL}/dashboard?billing=cancelled`,
-      metadata: { user_id: user.id, type: 'unlimited' }
-    });
-
-    res.json({ url: session.url });
+    const user = db.prepare('SELECT id, email FROM users WHERE id = ?').get(req.user.id);
+    const url = `${STRIPE_PAYMENT_LINK_UNLIMITED}?client_reference_id=${encodeURIComponent(user.id)}&prefilled_email=${encodeURIComponent(user.email)}`;
+    res.json({ url });
   } catch (err) {
     console.error('Stripe checkout error:', err);
-    res.status(500).json({ error: 'Failed to create checkout session' });
+    res.status(500).json({ error: 'Failed to generate checkout URL' });
   }
 });
 

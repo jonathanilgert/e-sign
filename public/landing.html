@@ -209,6 +209,19 @@ var _patchInterval = setInterval(function() {
 }, 200);
 // Stop trying after 10 seconds
 setTimeout(function() { clearInterval(_patchInterval); }, 10000);
+
+// Patch Unlimited plan CTA to go directly to the Stripe payment link
+var _pricePatchInterval = setInterval(function() {
+  var featuredPlan = document.querySelector('.plan.featured');
+  if (!featuredPlan) return;
+  var ctaBtn = featuredPlan.querySelector('.btn');
+  if (!ctaBtn) return;
+  ctaBtn.href = 'https://buy.stripe.com/eVq7sL8pVgkk46NanS0gw00';
+  ctaBtn.target = '_blank';
+  ctaBtn.rel = 'noopener';
+  clearInterval(_pricePatchInterval);
+}, 200);
+setTimeout(function() { clearInterval(_pricePatchInterval); }, 10000);
 </script>
 </body>
 </html>
