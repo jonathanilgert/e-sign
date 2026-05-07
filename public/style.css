@@ -100,6 +100,14 @@ body {
   letter-spacing: -0.04em;
 }
 
+/* When a brand-mark holds the inline pen SVG instead of a letter,
+   scale the SVG to the tile so it works at any tile size (26, 30, 22…). */
+.brand-mark > svg {
+  width: 65%;
+  height: 65%;
+  display: block;
+}
+
 .nav-right {
   display: flex;
   align-items: center;
