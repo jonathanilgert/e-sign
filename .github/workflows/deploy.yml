@@ -1,0 +1,27 @@
+name: Deploy Penned
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/e-sign
+            git fetch origin master
+            git reset --hard origin/master
+            npm install --omit=dev
+            pm2 restart penned
+            sleep 2
+            pm2 logs penned --lines 8 --nostream --raw 2>&1 | tail -10
+            echo "Deploy complete at $(date -u)"
