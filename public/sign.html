@@ -100,6 +100,21 @@
         <a href="/dashboard" class="btn">Back to Dashboard</a>
       </div>
     </section>
+
+    <!-- Not-found state (deleted, expired, or never existed) -->
+    <section id="not-found-section" class="card" style="display:none">
+      <div class="completed-banner">
+        <div style="font-size:48px;color:var(--muted)">&#9888;</div>
+        <h2 style="margin-top:8px">This document is no longer available</h2>
+        <p style="color:var(--muted);margin:12px 0 8px;max-width:480px">
+          The link you opened points to a document that has been cancelled, has expired, or was never sent.
+        </p>
+        <p style="color:var(--muted);margin:0 0 24px;max-width:480px">
+          If you were expecting to sign something, please <strong>check your inbox for a more recent email from the sender</strong> &mdash; they may have re-sent the document. Otherwise, contact them directly.
+        </p>
+        <a href="/" class="btn">Return to Penned</a>
+      </div>
+    </section>
   </main>
 
   <!-- Final review modal (sender only — last check before recipient is emailed) -->
@@ -198,7 +213,10 @@
       doc = await res.json();
 
       if (doc.error) {
-        document.getElementById('doc-title').textContent = 'Document Not Found';
+        // Hide the signing UI entirely and show the friendlier not-found card.
+        document.getElementById('sign-section').style.display = 'none';
+        document.getElementById('not-found-section').style.display = 'block';
+        document.title = 'Document not available - Penned';
         return;
       }
 
