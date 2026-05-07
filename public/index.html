@@ -104,6 +104,7 @@
             <button class="btn btn-sm active" id="btn-upload">Upload PDF</button>
             <button class="btn btn-sm" id="btn-template">Use Template</button>
             <button class="btn btn-sm" id="btn-saved">Saved Template</button>
+            <button class="btn btn-sm" id="btn-write">Write from Scratch</button>
           </div>
         </div>
 
@@ -124,6 +125,34 @@
                 <p class="hint" style="margin:0">Select a template from the library on the left to use it as the starting point for your document.</p>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div id="write-section" style="display:none">
+          <div class="doc-editor-wrap">
+            <div class="doc-editor-toolbar">
+              <div class="editor-toolbar-group">
+                <select id="editor-block-type" class="editor-block-select" title="Text style">
+                  <option value="p">Paragraph</option>
+                  <option value="h1">Heading 1</option>
+                  <option value="h2">Heading 2</option>
+                </select>
+              </div>
+              <div class="editor-toolbar-divider"></div>
+              <div class="editor-toolbar-group">
+                <button class="editor-btn editor-btn-bold" id="editor-btn-bold" title="Bold (Ctrl+B)">B</button>
+                <button class="editor-btn editor-btn-italic" id="editor-btn-italic" title="Italic (Ctrl+I)">I</button>
+                <button class="editor-btn editor-btn-underline" id="editor-btn-underline" title="Underline (Ctrl+U)">U</button>
+              </div>
+              <div class="editor-toolbar-divider"></div>
+              <div class="editor-toolbar-group">
+                <button class="editor-btn" id="editor-btn-ul" title="Bullet list">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="1.5" cy="3" r="1.5" fill="currentColor"/><rect x="4" y="2.25" width="9" height="1.5" rx=".75" fill="currentColor"/><circle cx="1.5" cy="7" r="1.5" fill="currentColor"/><rect x="4" y="6.25" width="9" height="1.5" rx=".75" fill="currentColor"/><circle cx="1.5" cy="11" r="1.5" fill="currentColor"/><rect x="4" y="10.25" width="9" height="1.5" rx=".75" fill="currentColor"/></svg>
+                </button>
+              </div>
+              <span class="editor-word-count" id="editor-word-count">0 words</span>
+            </div>
+            <div class="doc-editor-page" id="doc-editor" contenteditable="true" spellcheck="true"></div>
           </div>
         </div>
 

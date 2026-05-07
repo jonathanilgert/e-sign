@@ -144,6 +144,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Document creation flow
   loadLibrary();
   setupSourceToggle();
+  setupDocEditor();
   setupFieldPlacement();
   setupPageNav();
   setupTargetCursor();
@@ -608,10 +609,11 @@ function setupSourceToggle() {
   const btnTemplate = document.getElementById('btn-template');
   const btnUpload = document.getElementById('btn-upload');
   const btnSaved = document.getElementById('btn-saved');
-  const sections = ['template-section', 'upload-section', 'saved-section'];
+  const btnWrite = document.getElementById('btn-write');
+  const sections = ['template-section', 'upload-section', 'saved-section', 'write-section'];
 
   function activate(activeBtn, showSection) {
-    [btnTemplate, btnUpload, btnSaved].forEach(b => b.classList.remove('active'));
+    [btnTemplate, btnUpload, btnSaved, btnWrite].forEach(b => b.classList.remove('active'));
     activeBtn.classList.add('active');
     sections.forEach(s => document.getElementById(s).style.display = 'none');
     document.getElementById(showSection).style.display = '';
@@ -623,6 +625,103 @@ function setupSourceToggle() {
     activate(btnSaved, 'saved-section');
     populateSavedSelect();
   });
+  btnWrite.addEventListener('click', () => activate(btnWrite, 'write-section'));
+}
+
+// --------------- Document Editor (write from scratch) ---------------
+function setupDocEditor() {
+  const editor = document.getElementById('doc-editor');
+  if (!editor) return;
+
+  const blockSelect = document.getElementById('editor-block-type');
+  const wordCount = document.getElementById('editor-word-count');
+  const btnBold = document.getElementById('editor-btn-bold');
+  const btnItalic = document.getElementById('editor-btn-italic');
+  const btnUnderline = document.getElementById('editor-btn-underline');
+  const btnUl = document.getElementById('editor-btn-ul');
+
+  // Block type dropdown changes the current block's tag
+  blockSelect.addEventListener('change', () => {
+    editor.focus();
+    document.execCommand('formatBlock', false, blockSelect.value);
+  });
+
+  // Format buttons
+  btnBold.addEventListener('click', () => { editor.focus(); document.execCommand('bold'); updateToolbarState(); });
+  btnItalic.addEventListener('click', () => { editor.focus(); document.execCommand('italic'); updateToolbarState(); });
+  btnUnderline.addEventListener('click', () => { editor.focus(); document.execCommand('underline'); updateToolbarState(); });
+  btnUl.addEventListener('click', () => { editor.focus(); document.execCommand('insertUnorderedList'); updateToolbarState(); });
+
+  // Keyboard shortcuts
+  editor.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey) {
+      if (e.key === 'b') { e.preventDefault(); document.execCommand('bold'); updateToolbarState(); }
+      if (e.key === 'i') { e.preventDefault(); document.execCommand('italic'); updateToolbarState(); }
+      if (e.key === 'u') { e.preventDefault(); document.execCommand('underline'); updateToolbarState(); }
+    }
+  });
+
+  // Update toolbar to reflect current selection state
+  function updateToolbarState() {
+    btnBold.classList.toggle('active', document.queryCommandState('bold'));
+    btnItalic.classList.toggle('active', document.queryCommandState('italic'));
+    btnUnderline.classList.toggle('active', document.queryCommandState('underline'));
+
+    // Update block type selector
+    const block = document.queryCommandValue('formatBlock').toLowerCase().replace(/[<>]/g, '');
+    if (['h1', 'h2'].includes(block)) blockSelect.value = block;
+    else blockSelect.value = 'p';
+  }
+
+  // Word count
+  function updateWordCount() {
+    const text = editor.innerText || '';
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    wordCount.textContent = words + (words === 1 ? ' word' : ' words');
+  }
+
+  editor.addEventListener('keyup', () => { updateWordCount(); updateToolbarState(); });
+  editor.addEventListener('mouseup', updateToolbarState);
+  editor.addEventListener('input', updateWordCount);
+}
+
+function editorToBlocks(editorEl) {
+  const blocks = [];
+
+  function getSegments(el) {
+    const segs = [];
+    function walk(node, bold, italic) {
+      if (node.nodeType === 3) {
+        if (node.textContent) segs.push({ text: node.textContent, bold, italic });
+      } else if (node.nodeType === 1) {
+        const tag = node.tagName.toLowerCase();
+        if (tag === 'br') { segs.push({ text: '\n', bold, italic }); return; }
+        const isBold = bold || tag === 'b' || tag === 'strong';
+        const isItalic = italic || tag === 'i' || tag === 'em';
+        for (const child of node.childNodes) walk(child, isBold, isItalic);
+      }
+    }
+    walk(el, false, false);
+    return segs;
+  }
+
+  for (const child of editorEl.children) {
+    const tag = child.tagName.toLowerCase();
+    if (tag === 'ul' || tag === 'ol') {
+      for (const li of child.children) {
+        const segs = getSegments(li);
+        const text = segs.map(s => s.text).join('').trim();
+        if (text) blocks.push({ type: 'li', segments: [{ text: '• ' + text, bold: false, italic: false }] });
+      }
+      continue;
+    }
+    const type = ['h1', 'h2'].includes(tag) ? tag : 'p';
+    const segments = getSegments(child);
+    const text = segments.map(s => s.text).join('').trim();
+    if (text) blocks.push({ type, segments });
+  }
+
+  return blocks;
 }
 
 // --------------- Extra Signers (multi-recipient) ---------------
@@ -766,6 +865,7 @@ async function prepareDocument() {
 
   const isSaved = document.getElementById('btn-saved').classList.contains('active');
   const isTemplate = document.getElementById('btn-template').classList.contains('active');
+  const isWrite = document.getElementById('btn-write').classList.contains('active');
 
   if (!title || !senderName || !senderEmail) {
     showToast('Please fill in document title and your info');
@@ -836,6 +936,37 @@ async function prepareDocument() {
     state.fields = [];
     state.senderFieldValues = {};
     state.senderSignature = null;
+  } else if (isWrite) {
+    const editorEl = document.getElementById('doc-editor');
+    if (!editorEl.innerText.trim()) { showToast('Please write some document content'); return; }
+    const blocks = editorToBlocks(editorEl);
+    if (!blocks.length) { showToast('Please write some document content'); return; }
+
+    const btn = document.getElementById('btn-prepare');
+    btn.disabled = true; btn.textContent = 'Generating PDF…';
+    try {
+      const genRes = await authFetch('/api/generate-doc-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blocks })
+      });
+      const genData = await genRes.json();
+      if (!genRes.ok) {
+        showToast(genData.error || 'Failed to generate PDF');
+        btn.disabled = false; btn.textContent = 'Prepare Document';
+        return;
+      }
+      state.uploadedPath = genData.path;
+      pdfUrl = `/uploads/${genData.filename}`;
+      state.fields = [];
+      state.senderFieldValues = {};
+      state.senderSignature = null;
+    } catch (e) {
+      showToast('Failed to connect');
+      btn.disabled = false; btn.textContent = 'Prepare Document';
+      return;
+    }
+    btn.disabled = false; btn.textContent = 'Prepare Document';
   } else {
     const fileInput = document.getElementById('pdf-upload');
     if (!fileInput.files[0]) { showToast('Please select a PDF'); return; }

@@ -1239,6 +1239,106 @@ app.get('/api/saved-template-pdf/:id', (req, res) => {
   res.sendFile(path.resolve(filePath));
 });
 
+// --------------- Generate PDF from typed content ---------------
+app.post('/api/generate-doc-pdf', requireAuth, async (req, res) => {
+  try {
+    const { blocks } = req.body;
+    if (!blocks || !Array.isArray(blocks) || blocks.length === 0) {
+      return res.status(400).json({ error: 'No content provided' });
+    }
+
+    const pdfDoc = await PDFDocument.create();
+    const fonts = {
+      normal:     await pdfDoc.embedFont(StandardFonts.Helvetica),
+      bold:       await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+      italic:     await pdfDoc.embedFont(StandardFonts.HelveticaOblique),
+      boldItalic: await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique),
+    };
+
+    function pickFont(bold, italic) {
+      if (bold && italic) return fonts.boldItalic;
+      if (bold) return fonts.bold;
+      if (italic) return fonts.italic;
+      return fonts.normal;
+    }
+
+    // US Letter
+    const PW = 612, PH = 792, ML = 72, MR = 72, MT = 72, MB = 90;
+    const CW = PW - ML - MR;
+    const INK = rgb(0.08, 0.09, 0.11);
+
+    let page = pdfDoc.addPage([PW, PH]);
+    let y = PH - MT;
+
+    function newPage() { page = pdfDoc.addPage([PW, PH]); y = PH - MT; }
+    function ensureSpace(h) { if (y - h < MB) newPage(); }
+
+    for (const block of blocks) {
+      const isH1 = block.type === 'h1';
+      const isH2 = block.type === 'h2';
+      const fontSize   = isH1 ? 22 : isH2 ? 16 : 11;
+      const lineHeight = isH1 ? 30 : isH2 ? 24 : 17;
+      const spaceBefore = isH1 ? 20 : isH2 ? 14 : 0;
+      const spaceAfter  = isH1 ? 10 : isH2 ? 8  : 8;
+      const defaultBold = isH1 || isH2;
+
+      // Build word tokens with font info, respecting explicit line breaks
+      const tokens = [];
+      for (const seg of (block.segments || [])) {
+        const font = pickFont(defaultBold || seg.bold, seg.italic);
+        const lines = seg.text.split('\n');
+        for (let li = 0; li < lines.length; li++) {
+          if (li > 0) tokens.push({ isBreak: true });
+          const parts = lines[li].split(/(\s+)/);
+          for (const part of parts) {
+            if (part) tokens.push({ text: part, font, isSpace: /^\s+$/.test(part) });
+          }
+        }
+      }
+
+      // Word-wrap into visual lines
+      const wrappedLines = [[]];
+      let lineW = 0;
+      for (const tok of tokens) {
+        if (tok.isBreak) { wrappedLines.push([]); lineW = 0; continue; }
+        const w = tok.font.widthOfTextAtSize(tok.text, fontSize);
+        if (!tok.isSpace && lineW + w > CW && wrappedLines[wrappedLines.length - 1].length > 0) {
+          wrappedLines.push([]); lineW = 0;
+        }
+        wrappedLines[wrappedLines.length - 1].push({ ...tok, width: w });
+        lineW += w;
+      }
+
+      ensureSpace(spaceBefore + lineHeight);
+      y -= spaceBefore;
+
+      for (const lineTokens of wrappedLines) {
+        if (lineTokens.length === 0) { y -= lineHeight * 0.5; continue; }
+        ensureSpace(lineHeight);
+        let x = ML;
+        for (const t of lineTokens) {
+          if (t.text && t.text.trim()) {
+            page.drawText(t.text, { x, y: y - fontSize, size: fontSize, font: t.font, color: INK });
+          }
+          x += t.width;
+        }
+        y -= lineHeight;
+      }
+
+      y -= spaceAfter;
+    }
+
+    const pdfBytes = await pdfDoc.save();
+    const filename = `doc_${uuidv4()}.pdf`;
+    const filepath = path.join(__dirname, 'uploads', filename);
+    await fs.promises.writeFile(filepath, pdfBytes);
+    res.json({ path: filepath, filename });
+  } catch (err) {
+    console.error('PDF generation error:', err);
+    res.status(500).json({ error: 'Failed to generate PDF' });
+  }
+});
+
 // --------------- Billing Helpers ---------------
 
 // Check if user can send a document, and what action is needed
