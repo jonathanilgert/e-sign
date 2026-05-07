@@ -165,49 +165,6 @@
       font-size: 13.5px;
     }
 
-    /* Upgrade CTA banner */
-    .upgrade-banner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      padding: 20px 24px;
-      background: var(--ink);
-      color: var(--bg);
-      border-radius: 14px;
-      margin-bottom: 20px;
-    }
-    .upgrade-banner-text h4 {
-      font-size: 16px;
-      font-weight: 600;
-      letter-spacing: -0.012em;
-      margin-bottom: 4px;
-    }
-    .upgrade-banner-text p {
-      font-size: 13px;
-      opacity: 0.65;
-    }
-    .b-btn-upgrade {
-      background: var(--bg);
-      color: var(--ink);
-      border: none;
-      padding: 10px 22px;
-      border-radius: var(--r);
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
-      white-space: nowrap;
-      flex-shrink: 0;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      transition: opacity 0.15s, transform 0.12s;
-    }
-    .b-btn-upgrade:hover { opacity: 0.88; transform: translateY(-1px); }
-    .b-btn-upgrade:active { transform: translateY(0); }
-    .b-btn-upgrade:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
     @media (max-width: 600px) {
       .plan-card { flex-direction: column; align-items: flex-start; gap: 14px; }
       .upgrade-banner { flex-direction: column; align-items: flex-start; }
@@ -269,15 +226,6 @@
         <div class="usage-reset" id="usage-reset"></div>
       </div>
     </section>
-
-    <!-- Upgrade banner (free/payg only) -->
-    <div class="upgrade-banner" id="upgrade-banner" style="display:none">
-      <div class="upgrade-banner-text">
-        <h4>Go Unlimited for $7/mo</h4>
-        <p>Unlimited documents, custom branding, bulk send — no surprises.</p>
-      </div>
-      <button class="b-btn-upgrade" id="btn-upgrade">Upgrade now</button>
-    </div>
 
     <!-- Billing History -->
     <section class="billing-section" id="section-history">
@@ -356,7 +304,7 @@
       if (!isUnlimited) {
         const upgradeBtn = document.createElement('button');
         upgradeBtn.className = 'b-btn b-btn-primary';
-        upgradeBtn.id = 'btn-upgrade-card';
+        upgradeBtn.id = 'btn-upgrade';
         upgradeBtn.textContent = 'Upgrade to Unlimited';
         actions.appendChild(upgradeBtn);
         upgradeBtn.addEventListener('click', startUpgrade);
@@ -385,15 +333,12 @@
           document.getElementById('usage-reset').textContent = `Resets on ${reset.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`;
         }
         document.getElementById('usage-section').style.display = '';
-        document.getElementById('upgrade-banner').style.display = '';
       }
     }
 
     async function startUpgrade(e) {
       const btn = e.currentTarget;
-      const bannerBtn = document.getElementById('btn-upgrade');
       btn.disabled = true; btn.textContent = 'Redirecting...';
-      if (bannerBtn) { bannerBtn.disabled = true; bannerBtn.textContent = 'Redirecting...'; }
       try {
         const res = await authFetch('/api/billing/create-checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
         const data = await res.json();
@@ -401,12 +346,10 @@
         else {
           showToast(data.error || 'Failed to start checkout');
           btn.disabled = false; btn.textContent = 'Upgrade to Unlimited';
-          if (bannerBtn) { bannerBtn.disabled = false; bannerBtn.textContent = 'Upgrade now'; }
         }
       } catch (e) {
         showToast('Failed to connect');
         btn.disabled = false; btn.textContent = 'Upgrade to Unlimited';
-        if (bannerBtn) { bannerBtn.disabled = false; bannerBtn.textContent = 'Upgrade now'; }
       }
     }
 
@@ -463,9 +406,6 @@
       setupNav(settings);
       renderPlan(settings);
       loadHistory();
-
-      // Banner upgrade button
-      document.getElementById('btn-upgrade').addEventListener('click', startUpgrade);
 
       // Handle return from Stripe
       const params = new URLSearchParams(window.location.search);
