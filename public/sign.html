@@ -87,7 +87,7 @@
         <h2>Document Fully Executed</h2>
         <p id="completed-message" style="color:var(--muted);margin-bottom:20px"></p>
         <a id="download-link" class="btn btn-success" download>Download Signed PDF</a>
-        <a href="/dashboard" class="btn" style="margin-left:8px">Back to Dashboard</a>
+        <a id="completed-action-link" href="/" class="btn" style="margin-left:8px">Return to Penned</a>
       </div>
     </section>
 
@@ -766,6 +766,7 @@
       document.getElementById('completed-message').textContent =
         'This document has expired and can no longer be signed. Please contact the sender to request a new document.';
       document.getElementById('download-link').style.display = 'none';
+      applyCompletedActionForRole();
     }
 
     // Recipient just signed in a multi-signer doc, but other signers still need
@@ -788,6 +789,7 @@
       // Hide the download link — the final PDF only exists once everyone has signed.
       const dl = document.getElementById('download-link');
       if (dl) dl.style.display = 'none';
+      applyCompletedActionForRole();
     }
 
     function showWaitingState() {
@@ -804,6 +806,22 @@
       }
     }
 
+    // The completed-section is reused for completed/expired/awaiting-others
+    // states. Senders see "Back to Dashboard" (their own); recipients see
+    // "Return to Penned" (public home), since they aren't authenticated and
+    // shouldn't land on the sender's dashboard.
+    function applyCompletedActionForRole() {
+      const link = document.getElementById('completed-action-link');
+      if (!link) return;
+      if (role === 'sender') {
+        link.href = '/dashboard';
+        link.textContent = 'Back to Dashboard';
+      } else {
+        link.href = '/';
+        link.textContent = 'Return to Penned';
+      }
+    }
+
     function showCompletedState() {
       document.getElementById('sign-section').style.display = 'none';
       document.getElementById('completed-section').style.display = '';
@@ -817,6 +835,7 @@
           `${allNames} have all signed this document. A copy has been emailed to all parties.`;
       }
       document.getElementById('download-link').href = `/api/documents/${docId}/pdf`;
+      applyCompletedActionForRole();
     }
 
     function showToast(msg) {
