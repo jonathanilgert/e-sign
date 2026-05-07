@@ -307,31 +307,15 @@ async function loadStats() {
 
 // --------------- Document Filters ---------------
 function setupDocFilters() {
-  document.getElementById('doc-search').addEventListener('input', renderFilteredDocs);
   document.getElementById('doc-status-filter').addEventListener('change', renderFilteredDocs);
   document.getElementById('doc-sort').addEventListener('change', renderFilteredDocs);
 }
 
 function renderFilteredDocs() {
-  const search = document.getElementById('doc-search').value.toLowerCase().trim();
   const statusFilter = document.getElementById('doc-status-filter').value;
   const sort = document.getElementById('doc-sort').value;
 
   let docs = [...state.allDocs];
-
-  // Filter by search (matches title, primary recipient, AND any extra signers)
-  if (search) {
-    docs = docs.filter(d => {
-      if ((d.title || '').toLowerCase().includes(search)) return true;
-      if ((d.recipient_name || '').toLowerCase().includes(search)) return true;
-      if ((d.recipient_email || '').toLowerCase().includes(search)) return true;
-      const extras = Array.isArray(d.extra_signers) ? d.extra_signers : [];
-      return extras.some(s =>
-        (s.name || '').toLowerCase().includes(search) ||
-        (s.email || '').toLowerCase().includes(search)
-      );
-    });
-  }
 
   // Filter by status
   if (statusFilter !== 'all') {
