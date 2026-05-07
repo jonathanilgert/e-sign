@@ -180,9 +180,13 @@ db.exec(`
   )
 `);
 
-// Ensure saved templates directory exists
-const savedTemplatesDir = path.join(__dirname, 'templates', 'saved');
-if (!fs.existsSync(savedTemplatesDir)) fs.mkdirSync(savedTemplatesDir, { recursive: true });
+// Saved-template PDFs and any other persistent runtime data live OUTSIDE the
+// deploy directory so they survive code deploys, predeploy snapshots, or any
+// tooling that touches /opt/e-sign. On prod set PENNED_DATA_DIR=/var/lib/penned
+// in .env. In dev, falls back to ./data so the workspace is self-contained.
+const dataDir = process.env.PENNED_DATA_DIR || path.join(__dirname, 'data');
+const savedTemplatesDir = path.join(dataDir, 'saved-templates');
+fs.mkdirSync(savedTemplatesDir, { recursive: true });
 
 // Ensure logos directory exists
 const logosDir = path.join(__dirname, 'uploads', 'logos');
@@ -200,6 +204,22 @@ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 // Privacy: scope saved_templates to the owning user.
 try { db.exec(`ALTER TABLE saved_templates ADD COLUMN user_id TEXT`); } catch (e) { /* exists */ }
+
+// Startup integrity check: surface saved_templates rows whose PDFs are gone.
+// Logged loud (stderr) so the next incident is caught immediately, not by users.
+try {
+  const rows = db.prepare('SELECT id, name, uploaded_pdf_path FROM saved_templates').all();
+  const missing = rows.filter(r => {
+    const computed = path.join(savedTemplatesDir, `${r.id}.pdf`);
+    return !fs.existsSync(computed) && (!r.uploaded_pdf_path || !fs.existsSync(r.uploaded_pdf_path));
+  });
+  if (missing.length) {
+    console.error(`[STARTUP-WARN] ${missing.length}/${rows.length} saved_template row(s) have missing PDFs:`);
+    for (const m of missing) console.error(`  - ${m.id} "${m.name}"  stored=${m.uploaded_pdf_path || 'null'}`);
+  } else if (rows.length) {
+    console.log(`[STARTUP] saved_template integrity OK (${rows.length} rows, dir=${savedTemplatesDir})`);
+  }
+} catch (e) { console.error('[STARTUP] saved_template integrity check failed:', e.message); }
 
 // Curated public template library (manifest + PDFs in /library)
 const libraryDir = path.join(__dirname, 'library');
@@ -1191,13 +1211,28 @@ app.get('/api/library/:itemId/pdf', (req, res) => {
   res.sendFile(filePath);
 });
 
+// Resolve a saved-template PDF on disk. Prefers the path computed from the
+// current savedTemplatesDir (so the live config wins over a stored absolute
+// path that may have gone stale across deploys/migrations); falls back to the
+// path stored in the row for any legacy data.
+function resolveSavedTemplatePdf(id, storedPath) {
+  const computed = path.join(savedTemplatesDir, `${id}.pdf`);
+  if (fs.existsSync(computed)) return computed;
+  if (storedPath && fs.existsSync(storedPath)) return storedPath;
+  return null;
+}
+
 // Serve user-saved template PDFs (per-user; ownership enforced below).
 app.get('/api/saved-template-pdf/:id', (req, res) => {
   const t = db.prepare('SELECT user_id, uploaded_pdf_path FROM saved_templates WHERE id = ?').get(req.params.id);
   if (!t) return res.status(404).json({ error: 'Not found' });
   if (t.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-  if (!t.uploaded_pdf_path || !fs.existsSync(t.uploaded_pdf_path)) return res.status(404).json({ error: 'PDF missing' });
-  res.sendFile(path.resolve(t.uploaded_pdf_path));
+  const filePath = resolveSavedTemplatePdf(req.params.id, t.uploaded_pdf_path);
+  if (!filePath) {
+    console.error(`[TEMPLATE-MISSING] saved_template ${req.params.id} has no PDF (stored=${t.uploaded_pdf_path || 'null'})`);
+    return res.status(410).json({ error: "This template's PDF is no longer available. Please re-upload it." });
+  }
+  res.sendFile(path.resolve(filePath));
 });
 
 // --------------- Billing Helpers ---------------
@@ -1375,26 +1410,32 @@ app.post('/api/documents', docSendLimiter, (req, res) => {
   const id = uuidv4();
 
   let pdfPath;
-  if (libraryItemId) {
-    const item = libraryItemsById[libraryItemId];
-    if (!item) return res.status(400).json({ error: 'Unknown library template' });
-    const src = path.join(libraryDir, item.file);
-    if (!fs.existsSync(src)) return res.status(400).json({ error: 'Library PDF missing' });
-    pdfPath = path.join(__dirname, 'uploads', `${id}.pdf`);
-    fs.copyFileSync(src, pdfPath);
-  } else if (templateName) {
-    // Backwards-compat: only allowed for files inside templates/saved/ (per-user)
-    const src = path.join(__dirname, 'templates', 'saved', path.basename(templateName));
-    if (!fs.existsSync(src)) return res.status(400).json({ error: 'Template not found' });
-    pdfPath = path.join(__dirname, 'uploads', `${id}.pdf`);
-    fs.copyFileSync(src, pdfPath);
-  } else if (savedTemplatePdf) {
-    pdfPath = path.join(__dirname, 'uploads', `${id}.pdf`);
-    fs.copyFileSync(savedTemplatePdf, pdfPath);
-  } else if (pdfSource) {
-    pdfPath = pdfSource;
-  } else {
-    return res.status(400).json({ error: 'No PDF source provided' });
+  try {
+    if (libraryItemId) {
+      const item = libraryItemsById[libraryItemId];
+      if (!item) return res.status(400).json({ error: 'Unknown library template' });
+      const src = path.join(libraryDir, item.file);
+      if (!fs.existsSync(src)) return res.status(400).json({ error: 'Library PDF missing' });
+      pdfPath = path.join(__dirname, 'uploads', `${id}.pdf`);
+      fs.copyFileSync(src, pdfPath);
+    } else if (templateName) {
+      // Backwards-compat: only allowed for files inside savedTemplatesDir (per-user)
+      const src = path.join(savedTemplatesDir, path.basename(templateName));
+      if (!fs.existsSync(src)) return res.status(400).json({ error: "Template PDF no longer available. Please re-upload the template." });
+      pdfPath = path.join(__dirname, 'uploads', `${id}.pdf`);
+      fs.copyFileSync(src, pdfPath);
+    } else if (savedTemplatePdf) {
+      if (!fs.existsSync(savedTemplatePdf)) return res.status(400).json({ error: "Template PDF no longer available. Please re-upload the template." });
+      pdfPath = path.join(__dirname, 'uploads', `${id}.pdf`);
+      fs.copyFileSync(savedTemplatePdf, pdfPath);
+    } else if (pdfSource) {
+      pdfPath = pdfSource;
+    } else {
+      return res.status(400).json({ error: 'No PDF source provided' });
+    }
+  } catch (err) {
+    console.error('[DOC-CREATE] PDF copy failed:', err.message, { libraryItemId, templateName, savedTemplatePdf });
+    return res.status(500).json({ error: "Could not prepare the document's PDF. Please try again or re-upload the source." });
   }
 
   db.prepare(`

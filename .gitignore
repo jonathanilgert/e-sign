@@ -5,6 +5,8 @@ esign.db-shm
 esign.db-wal
 uploads/
 signed/
+data/
+templates/saved/
 Landing page/
 \#\ Auth.txt
 penned*items*needed*.txt
