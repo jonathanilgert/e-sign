@@ -595,32 +595,36 @@ async function sendEmail(to, subject, html, attachments = []) {
 function emailLayout(content, options = {}) {
   const year = new Date().getFullYear();
   const settingsUrl = `${BASE_URL}/settings#notifications`;
+  const fontStack = `'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif`;
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;padding:32px 16px">
+<body style="margin:0;padding:0;background:#faf9f5;font-family:${fontStack};color:#1c2230;-webkit-font-smoothing:antialiased">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#faf9f5;padding:36px 16px">
 <tr><td align="center">
-<table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.06)">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px">
 
-<!-- Header -->
-<tr><td style="background:#1a1a2e;padding:24px 32px">
-  <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.5px">Penned</span>
+<!-- Brand row (mirrors the site's nav / auth page header) -->
+<tr><td style="padding:0 4px 18px">
+  <table cellpadding="0" cellspacing="0" role="presentation"><tr>
+    <td width="30" height="30" align="center" valign="middle" style="background:#1c2230;border-radius:7px;color:#faf9f5;font-weight:700;font-size:15px;letter-spacing:-0.04em;font-family:${fontStack};line-height:30px">P</td>
+    <td valign="middle" style="padding-left:10px;font-size:16px;font-weight:600;color:#1c2230;letter-spacing:-0.012em;font-family:${fontStack}">Penned</td>
+  </tr></table>
 </td></tr>
 
-<!-- Body -->
-<tr><td style="padding:32px 32px 24px">
+<!-- Card -->
+<tr><td style="background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;padding:36px 36px 28px;box-shadow:0 1px 2px rgba(20,30,40,0.03),0 24px 50px -28px rgba(20,30,40,0.12)">
 ${content}
 </td></tr>
 
 <!-- Footer -->
-<tr><td style="padding:20px 32px 28px;border-top:1px solid #e5e7eb">
-  <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.6">
+<tr><td style="padding:22px 8px 0">
+  <p style="margin:0;font-size:12px;color:#6b7480;line-height:1.6;font-family:${fontStack}">
     Sent by Penned${config.fromEmail ? ' &middot; ' + config.fromEmail : ''}
   </p>
-  ${options.hideUnsubscribe ? '' : `<p style="margin:6px 0 0;font-size:12px;color:#9ca3af">
-    <a href="${settingsUrl}" style="color:#6b7280;text-decoration:underline">Email preferences</a>
+  ${options.hideUnsubscribe ? '' : `<p style="margin:6px 0 0;font-size:12px;color:#6b7480;font-family:${fontStack}">
+    <a href="${settingsUrl}" style="color:#16708a;text-decoration:underline">Email preferences</a>
   </p>`}
-  <p style="margin:6px 0 0;font-size:11px;color:#d1d5db">&copy; ${year} Penned</p>
+  <p style="margin:6px 0 0;font-size:11px;color:#a3a8b3;font-family:${fontStack}">&copy; ${year} Penned</p>
 </td></tr>
 
 </table>
@@ -630,8 +634,8 @@ ${content}
 }
 
 function emailButton(text, url) {
-  return `<table cellpadding="0" cellspacing="0" style="margin:24px 0"><tr><td>
-  <a href="${url}" style="display:inline-block;background:#4361ee;color:#ffffff;padding:14px 36px;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;font-family:inherit">${text}</a>
+  return `<table cellpadding="0" cellspacing="0" role="presentation" style="margin:24px 0"><tr><td style="background:#1c2230;border-radius:10px">
+  <a href="${url}" style="display:inline-block;color:#ffffff;padding:13px 32px;font-size:15px;font-weight:500;letter-spacing:-0.005em;text-decoration:none;border-radius:10px;font-family:inherit">${text}</a>
 </td></tr></table>`;
 }
 
@@ -639,48 +643,48 @@ const emailTemplates = {
 
   welcome(name) {
     return emailLayout(`
-      <h2 style="margin:0 0 8px;font-size:22px;color:#1a1a2e">Welcome to Penned</h2>
-      <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6">Hi ${name},</p>
-      <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6">
+      <h2 style="margin:0 0 8px;font-size:22px;color:#1c2230">Welcome to Penned</h2>
+      <p style="margin:0 0 16px;font-size:15px;color:#3d4654;line-height:1.6">Hi ${name},</p>
+      <p style="margin:0 0 16px;font-size:15px;color:#3d4654;line-height:1.6">
         Your account is ready. Penned lets you send documents for signature in minutes &mdash; no printing, scanning, or mailing.
       </p>
-      <p style="margin:0 0 4px;font-size:15px;color:#374151;line-height:1.6">Here's how to get started:</p>
-      <ol style="margin:8px 0 20px;padding-left:20px;font-size:14px;color:#374151;line-height:1.8">
+      <p style="margin:0 0 4px;font-size:15px;color:#3d4654;line-height:1.6">Here's how to get started:</p>
+      <ol style="margin:8px 0 20px;padding-left:20px;font-size:14px;color:#3d4654;line-height:1.8">
         <li>Upload a PDF or choose a template</li>
         <li>Place signature and text fields</li>
         <li>Send &mdash; your recipient signs from any device</li>
       </ol>
       ${emailButton('Go to Dashboard', BASE_URL + '/dashboard')}
-      <p style="margin:0;font-size:13px;color:#9ca3af">You have 3 free documents per month on your current plan.</p>
+      <p style="margin:0;font-size:13px;color:#6b7480">You have 3 free documents per month on your current plan.</p>
     `);
   },
 
   signingInvitation(senderName, docTitle, signUrl) {
     return emailLayout(`
-      <h2 style="margin:0 0 16px;font-size:22px;color:#1a1a2e">${senderName} sent you a document to sign</h2>
-      <p style="margin:0 0 8px;font-size:15px;color:#374151;line-height:1.6">
+      <h2 style="margin:0 0 16px;font-size:22px;color:#1c2230">${senderName} sent you a document to sign</h2>
+      <p style="margin:0 0 8px;font-size:15px;color:#3d4654;line-height:1.6">
         You've been asked to review and sign the following document:
       </p>
       <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;margin:16px 0">
-        <p style="margin:0;font-size:16px;font-weight:600;color:#1a1a2e">${docTitle}</p>
-        <p style="margin:4px 0 0;font-size:13px;color:#6b7280">From: ${senderName}</p>
+        <p style="margin:0;font-size:16px;font-weight:600;color:#1c2230">${docTitle}</p>
+        <p style="margin:4px 0 0;font-size:13px;color:#6b7480">From: ${senderName}</p>
       </div>
       ${emailButton('Review & Sign Document', signUrl)}
-      <p style="margin:0 0 6px;font-size:13px;color:#9ca3af">This is a secure signing link. Only use it if you were expecting this document.</p>
-      <p style="margin:0;font-size:13px;color:#9ca3af">If you weren't expecting this, you can safely ignore this email.</p>
+      <p style="margin:0 0 6px;font-size:13px;color:#6b7480">This is a secure signing link. Only use it if you were expecting this document.</p>
+      <p style="margin:0;font-size:13px;color:#6b7480">If you weren't expecting this, you can safely ignore this email.</p>
     `, { hideUnsubscribe: true });
   },
 
   documentSigned(senderName, recipientName, docTitle) {
     return emailLayout(`
-      <h2 style="margin:0 0 16px;font-size:22px;color:#1a1a2e">Document Signed</h2>
-      <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6">
+      <h2 style="margin:0 0 16px;font-size:22px;color:#1c2230">Document Signed</h2>
+      <p style="margin:0 0 16px;font-size:15px;color:#3d4654;line-height:1.6">
         Hi ${senderName},
       </p>
-      <p style="margin:0 0 8px;font-size:15px;color:#374151;line-height:1.6">
+      <p style="margin:0 0 8px;font-size:15px;color:#3d4654;line-height:1.6">
         <strong>${recipientName}</strong> has signed <strong>${docTitle}</strong>.
       </p>
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6">
+      <p style="margin:0 0 20px;font-size:15px;color:#3d4654;line-height:1.6">
         Both parties have now completed the document. A copy of the fully executed PDF is attached to this email.
       </p>
       ${emailButton('View in Dashboard', BASE_URL + '/dashboard')}
@@ -689,27 +693,27 @@ const emailTemplates = {
 
   documentCompleteRecipient(recipientName, docTitle) {
     return emailLayout(`
-      <h2 style="margin:0 0 16px;font-size:22px;color:#1a1a2e">Document Complete</h2>
-      <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6">
+      <h2 style="margin:0 0 16px;font-size:22px;color:#1c2230">Document Complete</h2>
+      <p style="margin:0 0 16px;font-size:15px;color:#3d4654;line-height:1.6">
         Hi ${recipientName},
       </p>
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6">
+      <p style="margin:0 0 20px;font-size:15px;color:#3d4654;line-height:1.6">
         <strong>${docTitle}</strong> has been fully signed by both parties. A copy of the executed document is attached for your records.
       </p>
-      <p style="margin:0;font-size:13px;color:#9ca3af">This document was digitally signed via Penned. Both parties attested that this electronic signature is legally binding.</p>
+      <p style="margin:0;font-size:13px;color:#6b7480">This document was digitally signed via Penned. Both parties attested that this electronic signature is legally binding.</p>
     `, { hideUnsubscribe: true });
   },
 
   passwordReset(name, resetUrl) {
     return emailLayout(`
-      <h2 style="margin:0 0 16px;font-size:22px;color:#1a1a2e">Reset Your Password</h2>
-      <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6">Hi ${name},</p>
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6">
+      <h2 style="margin:0 0 16px;font-size:22px;color:#1c2230">Reset Your Password</h2>
+      <p style="margin:0 0 16px;font-size:15px;color:#3d4654;line-height:1.6">Hi ${name},</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#3d4654;line-height:1.6">
         We received a request to reset your password. Click the button below to choose a new one:
       </p>
       ${emailButton('Reset Password', resetUrl)}
-      <p style="margin:0 0 6px;font-size:13px;color:#9ca3af">This link expires in 1 hour.</p>
-      <p style="margin:0;font-size:13px;color:#9ca3af">If you didn't request this, you can safely ignore this email. Your password won't change.</p>
+      <p style="margin:0 0 6px;font-size:13px;color:#6b7480">This link expires in 1 hour.</p>
+      <p style="margin:0;font-size:13px;color:#6b7480">If you didn't request this, you can safely ignore this email. Your password won't change.</p>
     `);
   },
 
@@ -718,28 +722,28 @@ const emailTemplates = {
       ? `<p style="margin:0 0 16px;font-size:14px;color:#dc2626;font-weight:500">This document expires in ${expiresInDays} day${expiresInDays === 1 ? '' : 's'}.</p>`
       : '';
     return emailLayout(`
-      <h2 style="margin:0 0 16px;font-size:22px;color:#1a1a2e">Reminder: Document awaiting your signature</h2>
-      <p style="margin:0 0 8px;font-size:15px;color:#374151;line-height:1.6">
+      <h2 style="margin:0 0 16px;font-size:22px;color:#1c2230">Reminder: Document awaiting your signature</h2>
+      <p style="margin:0 0 8px;font-size:15px;color:#3d4654;line-height:1.6">
         ${senderName} sent you a document ${daysWaiting} day${daysWaiting === 1 ? '' : 's'} ago that still needs your signature:
       </p>
       <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;margin:16px 0">
-        <p style="margin:0;font-size:16px;font-weight:600;color:#1a1a2e">${docTitle}</p>
-        <p style="margin:4px 0 0;font-size:13px;color:#6b7280">From: ${senderName}</p>
+        <p style="margin:0;font-size:16px;font-weight:600;color:#1c2230">${docTitle}</p>
+        <p style="margin:4px 0 0;font-size:13px;color:#6b7480">From: ${senderName}</p>
       </div>
       ${urgency}
       ${emailButton('Review & Sign Document', signUrl)}
-      <p style="margin:0;font-size:13px;color:#9ca3af">If you've already signed this document, please disregard this reminder.</p>
+      <p style="margin:0;font-size:13px;color:#6b7480">If you've already signed this document, please disregard this reminder.</p>
     `, { hideUnsubscribe: true });
   },
 
   documentExpiredSender(senderName, recipientName, docTitle) {
     return emailLayout(`
-      <h2 style="margin:0 0 16px;font-size:22px;color:#1a1a2e">Document Expired</h2>
-      <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6">Hi ${senderName},</p>
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6">
+      <h2 style="margin:0 0 16px;font-size:22px;color:#1c2230">Document Expired</h2>
+      <p style="margin:0 0 16px;font-size:15px;color:#3d4654;line-height:1.6">Hi ${senderName},</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#3d4654;line-height:1.6">
         <strong>${docTitle}</strong> sent to ${recipientName} has expired after ${DOC_EXPIRY_DAYS} days without being signed.
       </p>
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6">
+      <p style="margin:0 0 20px;font-size:15px;color:#3d4654;line-height:1.6">
         You can create a new document and resend it from your dashboard.
       </p>
       ${emailButton('Go to Dashboard', BASE_URL + '/dashboard')}
@@ -750,26 +754,26 @@ const emailTemplates = {
   // Informational + nudge: tells them the doc is moving forward and re-surfaces their link.
   coSignerSigned(recipientName, signerWhoJustSignedName, senderName, docTitle, signUrl) {
     return emailLayout(`
-      <h2 style="margin:0 0 16px;font-size:22px;color:#1a1a2e">${signerWhoJustSignedName} just signed</h2>
-      <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6">Hi ${recipientName},</p>
-      <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6">
+      <h2 style="margin:0 0 16px;font-size:22px;color:#1c2230">${signerWhoJustSignedName} just signed</h2>
+      <p style="margin:0 0 16px;font-size:15px;color:#3d4654;line-height:1.6">Hi ${recipientName},</p>
+      <p style="margin:0 0 16px;font-size:15px;color:#3d4654;line-height:1.6">
         <strong>${signerWhoJustSignedName}</strong> has signed <strong>${docTitle}</strong>${senderName ? ` from ${senderName}` : ''}. The document still needs your signature to be fully executed.
       </p>
       ${emailButton('Review & Sign Document', signUrl)}
-      <p style="margin:0;font-size:13px;color:#9ca3af">If you've already signed, please disregard this notice.</p>
+      <p style="margin:0;font-size:13px;color:#6b7480">If you've already signed, please disregard this notice.</p>
     `, { hideUnsubscribe: true });
   },
 
   paymentReceipt(name, amount, description, date) {
     return emailLayout(`
-      <h2 style="margin:0 0 16px;font-size:22px;color:#1a1a2e">Payment Receipt</h2>
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6">Hi ${name},</p>
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin:0 0 24px;font-size:14px;color:#374151">
+      <h2 style="margin:0 0 16px;font-size:22px;color:#1c2230">Payment Receipt</h2>
+      <p style="margin:0 0 20px;font-size:15px;color:#3d4654;line-height:1.6">Hi ${name},</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin:0 0 24px;font-size:14px;color:#3d4654">
         <tr><td style="padding:14px 20px;border-bottom:1px solid #e5e7eb"><strong>Description</strong></td><td style="padding:14px 20px;border-bottom:1px solid #e5e7eb;text-align:right">${description}</td></tr>
         <tr><td style="padding:14px 20px;border-bottom:1px solid #e5e7eb"><strong>Amount</strong></td><td style="padding:14px 20px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;font-size:16px">${amount}</td></tr>
         <tr><td style="padding:14px 20px"><strong>Date</strong></td><td style="padding:14px 20px;text-align:right">${date}</td></tr>
       </table>
-      <p style="margin:0;font-size:13px;color:#9ca3af">If you have questions about this charge, visit your <a href="${BASE_URL}/settings#account" style="color:#4361ee;text-decoration:underline">billing settings</a>.</p>
+      <p style="margin:0;font-size:13px;color:#6b7480">If you have questions about this charge, visit your <a href="${BASE_URL}/settings#account" style="color:#16708a;text-decoration:underline">billing settings</a>.</p>
     `);
   }
 };
