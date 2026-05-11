@@ -472,8 +472,9 @@ app.get('/api/csrf-token', (req, res) => {
 function csrfProtection(req, res, next) {
   // Skip for safe methods, webhooks, and auth routes (pre-session, rate-limited instead)
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  if (req.path.startsWith('/api/webhooks/')) return next();
-  if (req.path.startsWith('/api/auth/')) return next();
+  if (req.path.startsWith('/api/webhooks/') || req.path.startsWith('/webhooks/')) return next();
+  if (req.path.startsWith('/api/auth/') || req.path.startsWith('/auth/')) return next();
+  if (req.path.startsWith('/api/admin/') || req.path.startsWith('/admin/')) return next();
 
   const csrfToken = req.headers['x-csrf-token'];
   const authHeader = req.headers.authorization;
@@ -1161,9 +1162,10 @@ app.delete('/api/settings/account', requireAuth, async (req, res) => {
 // Apply auth to all /api/ routes EXCEPT /api/auth/*, /api/documents/:id (GET for signing), /api/documents/:id/pdf, /api/documents/:id/sign-*
 
 app.use('/api', (req, res, next) => {
-  // Skip auth for auth routes, webhooks, and CSRF token endpoint
+  // Skip auth for auth routes, webhooks, CSRF token, and admin (admin has its own requireAdmin middleware)
   if (req.path.startsWith('/auth/')) return next();
   if (req.path.startsWith('/webhooks/')) return next();
+  if (req.path.startsWith('/admin/')) return next();
   if (req.path === '/csrf-token' && req.method === 'GET') return next();
   // Skip auth for public signing endpoints
   const docMatch = req.path.match(/^\/documents\/([^/]+)/);
