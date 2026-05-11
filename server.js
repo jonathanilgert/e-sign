@@ -1150,11 +1150,11 @@ app.delete('/api/settings/account', requireAuth, async (req, res) => {
     if (!valid) return res.status(401).json({ error: 'Incorrect password' });
 
     // Archive to deleted_accounts before wiping
-    const fullUser   = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
-    const totalDocs  = db.prepare('SELECT COUNT(*) as n FROM documents WHERE user_id=?').get(req.user.id).n;
-    const totalSpent = db.prepare('SELECT COALESCE(SUM(amount_cents),0) as t FROM billing_history WHERE user_id=?').get(req.user.id).t;
+    const archiveUser = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
+    const totalDocs   = db.prepare('SELECT COUNT(*) as n FROM documents WHERE user_id=?').get(req.user.id).n;
+    const totalSpent  = db.prepare('SELECT COALESCE(SUM(amount_cents),0) as t FROM billing_history WHERE user_id=?').get(req.user.id).t;
     db.prepare(`INSERT OR REPLACE INTO deleted_accounts (id,name,email,plan_type,company_name,total_docs,total_spent_cents,joined_at,deleted_by)
-      VALUES (?,?,?,?,?,?,?,?,'self')`).run(fullUser.id, fullUser.name, fullUser.email, fullUser.plan_type, fullUser.company_name||null, totalDocs, totalSpent, fullUser.created_at);
+      VALUES (?,?,?,?,?,?,?,?,'self')`).run(archiveUser.id, archiveUser.name, archiveUser.email, archiveUser.plan_type, archiveUser.company_name||null, totalDocs, totalSpent, archiveUser.created_at);
 
     // Delete user's documents and their files
     const docs = db.prepare('SELECT pdf_path, final_pdf_path FROM documents WHERE user_id = ?').all(req.user.id);
