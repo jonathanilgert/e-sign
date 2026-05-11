@@ -180,6 +180,21 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS deleted_accounts (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    email TEXT,
+    plan_type TEXT,
+    company_name TEXT,
+    total_docs INTEGER DEFAULT 0,
+    total_spent_cents INTEGER DEFAULT 0,
+    joined_at TEXT,
+    deleted_at TEXT DEFAULT (datetime('now')),
+    deleted_by TEXT DEFAULT 'admin'
+  )
+`);
+
 // Saved-template PDFs and any other persistent runtime data live OUTSIDE the
 // deploy directory so they survive code deploys, predeploy snapshots, or any
 // tooling that touches /opt/e-sign. On prod set PENNED_DATA_DIR=/var/lib/penned
@@ -1133,6 +1148,13 @@ app.delete('/api/settings/account', requireAuth, async (req, res) => {
     const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Incorrect password' });
+
+    // Archive to deleted_accounts before wiping
+    const fullUser   = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
+    const totalDocs  = db.prepare('SELECT COUNT(*) as n FROM documents WHERE user_id=?').get(req.user.id).n;
+    const totalSpent = db.prepare('SELECT COALESCE(SUM(amount_cents),0) as t FROM billing_history WHERE user_id=?').get(req.user.id).t;
+    db.prepare(`INSERT OR REPLACE INTO deleted_accounts (id,name,email,plan_type,company_name,total_docs,total_spent_cents,joined_at,deleted_by)
+      VALUES (?,?,?,?,?,?,?,?,'self')`).run(fullUser.id, fullUser.name, fullUser.email, fullUser.plan_type, fullUser.company_name||null, totalDocs, totalSpent, fullUser.created_at);
 
     // Delete user's documents and their files
     const docs = db.prepare('SELECT pdf_path, final_pdf_path FROM documents WHERE user_id = ?').all(req.user.id);
@@ -2228,6 +2250,13 @@ app.put('/api/admin/users/:id/plan', requireAdmin, (req, res) => {
 });
 
 app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);
+  if (user) {
+    const totalDocs  = db.prepare('SELECT COUNT(*) as n FROM documents WHERE user_id=?').get(req.params.id).n;
+    const totalSpent = db.prepare('SELECT COALESCE(SUM(amount_cents),0) as t FROM billing_history WHERE user_id=?').get(req.params.id).t;
+    db.prepare(`INSERT OR REPLACE INTO deleted_accounts (id,name,email,plan_type,company_name,total_docs,total_spent_cents,joined_at,deleted_by)
+      VALUES (?,?,?,?,?,?,?,?,'admin')`).run(user.id, user.name, user.email, user.plan_type, user.company_name||null, totalDocs, totalSpent, user.created_at);
+  }
   db.prepare('DELETE FROM billing_history WHERE user_id=?').run(req.params.id);
   db.prepare('DELETE FROM password_reset_tokens WHERE user_id=?').run(req.params.id);
   db.prepare('DELETE FROM documents WHERE user_id=?').run(req.params.id);
@@ -2245,6 +2274,11 @@ app.get('/api/admin/documents', requireAdmin, (req, res) => {
   const docs  = db.prepare(`SELECT d.id,d.title,d.status,d.sender_name,d.sender_email,d.recipient_name,d.recipient_email,d.created_at,d.recipient_completed_at,u.name as owner_name FROM documents d LEFT JOIN users u ON u.id=d.user_id WHERE ${where} ORDER BY d.created_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
   const total = db.prepare(`SELECT COUNT(*) as n FROM documents d WHERE ${where}`).get(...params).n;
   res.json({ docs, total, page:Number(page), pages:Math.ceil(total/limit) });
+});
+
+app.get('/api/admin/deleted-accounts', requireAdmin, (req, res) => {
+  const rows = db.prepare('SELECT * FROM deleted_accounts ORDER BY deleted_at DESC').all();
+  res.json({ rows });
 });
 
 app.get('/api/admin/billing', requireAdmin, (req, res) => {
