@@ -683,6 +683,51 @@ function setupDocEditor() {
   editor.addEventListener('keyup', () => { updateWordCount(); updateToolbarState(); });
   editor.addEventListener('mouseup', updateToolbarState);
   editor.addEventListener('input', updateWordCount);
+
+  // Insert special blocks (sig line / page break)
+  function insertSpecialBlock(type) {
+    const isSig = type === 'sig_line';
+    const block = document.createElement('div');
+    block.contentEditable = 'false';
+    block.dataset.blockType = type;
+    block.className = isSig ? 'editor-sig-line' : 'editor-page-break';
+    if (isSig) {
+      block.innerHTML = '<div class="editor-sig-underline"></div><div class="editor-sig-labels"><span>Signature</span><span>Date</span></div>';
+    } else {
+      block.innerHTML = '<span>Page Break</span>';
+    }
+
+    // Insert after the current cursor block, or at the end
+    const sel = window.getSelection();
+    let anchor = null;
+    if (sel && sel.rangeCount > 0) {
+      let node = sel.getRangeAt(0).startContainer;
+      while (node && node.parentElement !== editor) node = node.parentElement;
+      if (node && node.parentElement === editor) anchor = node;
+    }
+
+    if (anchor) {
+      anchor.after(block);
+    } else {
+      editor.appendChild(block);
+    }
+
+    // Always place an empty paragraph after so typing can continue
+    const p = document.createElement('p');
+    p.innerHTML = '<br>';
+    block.after(p);
+    const r = document.createRange();
+    r.setStart(p, 0);
+    r.collapse(true);
+    const s = window.getSelection();
+    s.removeAllRanges();
+    s.addRange(r);
+    editor.focus();
+    updateWordCount();
+  }
+
+  document.getElementById('editor-btn-sigline').addEventListener('click', () => insertSpecialBlock('sig_line'));
+  document.getElementById('editor-btn-pagebreak').addEventListener('click', () => insertSpecialBlock('page_break'));
 }
 
 function editorToBlocks(editorEl) {
@@ -707,6 +752,13 @@ function editorToBlocks(editorEl) {
 
   for (const child of editorEl.children) {
     const tag = child.tagName.toLowerCase();
+
+    // Special non-editable blocks
+    if (child.dataset && child.dataset.blockType) {
+      blocks.push({ type: child.dataset.blockType });
+      continue;
+    }
+
     if (tag === 'ul' || tag === 'ol') {
       for (const li of child.children) {
         const segs = getSegments(li);

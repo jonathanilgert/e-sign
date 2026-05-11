@@ -1274,6 +1274,29 @@ app.post('/api/generate-doc-pdf', requireAuth, async (req, res) => {
     function ensureSpace(h) { if (y - h < MB) newPage(); }
 
     for (const block of blocks) {
+      // Page break — start a new PDF page
+      if (block.type === 'page_break') {
+        newPage();
+        continue;
+      }
+
+      // Signature line — underline + Signature / Date labels
+      if (block.type === 'sig_line') {
+        ensureSpace(80);
+        y -= 20; // top breathing room
+        const lineY = y - 30;
+        page.drawLine({
+          start: { x: ML, y: lineY },
+          end:   { x: ML + CW, y: lineY },
+          thickness: 0.75,
+          color: rgb(0.3, 0.3, 0.3),
+        });
+        page.drawText('Signature', { x: ML, y: lineY - 13, size: 8, font: fonts.normal, color: rgb(0.5, 0.5, 0.5) });
+        page.drawText('Date', { x: ML + CW - 22, y: lineY - 13, size: 8, font: fonts.normal, color: rgb(0.5, 0.5, 0.5) });
+        y -= 60;
+        continue;
+      }
+
       const isH1 = block.type === 'h1';
       const isH2 = block.type === 'h2';
       const fontSize   = isH1 ? 22 : isH2 ? 16 : 11;
