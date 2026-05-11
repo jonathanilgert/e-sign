@@ -2165,6 +2165,38 @@ app.get('/register', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
+// Contact page
+app.get('/contact', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'contact.html'));
+});
+
+app.post('/api/contact', async (req, res) => {
+  const { name, phone, email, message } = req.body || {};
+  if (!name || !message) return res.status(400).json({ error: 'Name and message are required.' });
+
+  const ownerEmail = process.env.CONTACT_EMAIL || process.env.FROM_EMAIL || process.env.SMTP_USER || '';
+  if (!ownerEmail) {
+    console.log('[CONTACT FORM]', { name, phone, email, message });
+    return res.json({ ok: true });
+  }
+
+  const html = `
+    <p><strong>Name:</strong> ${name}</p>
+    <p><strong>Phone:</strong> ${phone || '—'}</p>
+    <p><strong>Email:</strong> ${email || '—'}</p>
+    <hr>
+    <p>${message.replace(/\n/g, '<br>')}</p>
+  `;
+
+  try {
+    await sendEmail(ownerEmail, `Contact form — ${name}`, html);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Contact email error:', err);
+    res.status(500).json({ error: 'Failed to send message. Please try again.' });
+  }
+});
+
 // Settings page
 app.get('/settings', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'settings.html'));

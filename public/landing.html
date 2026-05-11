@@ -218,6 +218,20 @@ var _patchInterval = setInterval(function() {
 // Stop trying after 10 seconds
 setTimeout(function() { clearInterval(_patchInterval); }, 10000);
 
+// Patch "Contact" links to point to /contact instead of /login
+var _contactPatchInterval = setInterval(function() {
+  var found = false;
+  document.querySelectorAll('a').forEach(function(a) {
+    var txt = a.textContent.trim().toLowerCase();
+    if ((txt === 'contact' || txt === 'contact us') && a.href !== window.location.origin + '/contact') {
+      a.href = '/contact';
+      found = true;
+    }
+  });
+  if (found) clearInterval(_contactPatchInterval);
+}, 200);
+setTimeout(function() { clearInterval(_contactPatchInterval); }, 10000);
+
 // Patch Unlimited plan CTA to go directly to the Stripe payment link
 var _pricePatchInterval = setInterval(function() {
   var featuredPlan = document.querySelector('.plan.featured');
