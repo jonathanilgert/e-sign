@@ -1710,8 +1710,60 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* ===== Responsive ===== */
+/* ===== Mobile — tablets & large phones (≤ 768px) ===== */
 @media (max-width: 768px) {
+  /* Nav */
+  .top-nav { padding: 0 16px; }
+  .nav-user-name { display: none; }
+
+  /* Layout */
+  main { padding: 0 16px; margin: 20px auto; }
+  .card { padding: 20px; }
+
+  /* Stats */
+  .stats-row { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat-card { padding: 16px 12px; }
+  .stat-value { font-size: 22px; }
+
+  /* Section header: stack title and button */
+  .section-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .section-header .btn { width: 100%; justify-content: center; }
+
+  /* Source toggle wraps onto multiple lines */
+  .source-toggle { flex-wrap: wrap; }
+  .source-toggle .btn-sm { flex: 1 1 auto; text-align: center; }
+
+  /* Form */
   .form-row { grid-template-columns: 1fr; }
+
+  /* Filter bar */
+  .filter-bar { flex-direction: column; }
+  .filter-select { min-width: 0; width: 100%; }
+
+  /* Document table — show title + status + actions only */
+  .doc-table-header,
+  .doc-table-row { grid-template-columns: 1fr 1fr; }
+  .doc-table-header > div:nth-child(n+3),
+  .doc-table-row > div:nth-child(n+3) { display: none; }
+  .doc-table-row .doc-actions {
+    display: flex;
+    grid-column: 1 / -1;
+    padding-top: 8px;
+  }
+
+  /* Template rows */
+  .template-row { grid-template-columns: 1fr auto; }
+  .template-row > *:nth-child(n+3) { display: none; }
+
+  /* Template library */
+  .library-layout { grid-template-columns: 1fr; }
+  .library-sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--line-2);
+    max-height: 220px;
+  }
+
+  /* PDF workspace */
   .pdf-workspace { flex-direction: column; }
   .toolbar-sidebar {
     position: static;
@@ -1720,37 +1772,75 @@ input:focus, select:focus, textarea:focus {
     flex-direction: row;
     flex-wrap: wrap;
   }
-  .stats-row {
-    grid-template-columns: 1fr;
-  }
-  .doc-table-header,
-  .doc-table-row {
-    grid-template-columns: 1fr 1fr;
-  }
-  .doc-table-header > div:nth-child(n+3),
-  .doc-table-row > div:nth-child(n+3) {
-    display: none;
-  }
-  .doc-table-row .doc-actions {
-    display: flex;
-    grid-column: 1 / -1;
-    padding-top: 8px;
-  }
-  .template-row {
-    grid-template-columns: 1fr auto;
-  }
-  .template-row > *:nth-child(n+3) {
-    display: none;
-  }
-  .filter-bar {
-    flex-direction: column;
-  }
-  .filter-select {
-    min-width: 0;
-  }
-  .nav-user-name {
-    display: none;
-  }
+
+  /* Send confirm modal */
+  .send-confirm-dialog { padding: 22px 20px; }
+
+  /* Upgrade modal */
+  .upgrade-box { padding: 28px 22px; }
+
+  /* Document editor */
+  .doc-editor-page { padding: 24px 20px; }
+  .doc-editor-toolbar { gap: 1px; padding: 6px 10px; }
+}
+
+/* ===== Mobile — small phones (≤ 480px) ===== */
+@media (max-width: 480px) {
+  /* Nav — hide plan badge on tiny screens */
+  .top-nav { padding: 0 14px; }
+  .plan-badge { display: none !important; }
+
+  /* Layout */
+  main { padding: 0 12px; margin: 14px auto; }
+  .card { padding: 16px; }
+
+  /* Stats row stacks on very small screens */
+  .stats-row { grid-template-columns: 1fr; gap: 8px; }
+  .stat-card { padding: 14px 16px; text-align: left; display: flex; align-items: center; justify-content: space-between; }
+  .stat-value { font-size: 20px; margin-bottom: 0; }
+  .stat-label { font-size: 12px; }
+
+  /* Source toggle — each button full width */
+  .source-toggle { flex-direction: column; }
+  .source-toggle .btn-sm { width: 100%; }
+
+  /* Section header button — keep inline on very small, just ensure no overflow */
+  .section-header h2 { font-size: 16px; }
+
+  /* Modals — full-width feel */
+  .send-confirm-dialog { padding: 18px 16px; border-radius: 12px; }
+  .send-confirm-actions { flex-direction: column-reverse; gap: 8px; }
+  .send-confirm-actions .btn { width: 100%; justify-content: center; }
+
+  .upgrade-box { padding: 22px 18px; width: 96%; }
+  .upgrade-box h3 { font-size: 18px; }
+
+  /* Review modal */
+  .review-modal { padding: 22px 18px; }
+  .review-row { grid-template-columns: 80px 1fr; }
+
+  /* Editor */
+  .doc-editor-page { padding: 16px 14px; min-height: 300px; }
+  .editor-block-select { font-size: 12px; padding: 3px 6px; }
+  .editor-btn { width: 26px; height: 26px; font-size: 12px; }
+  .editor-word-count { font-size: 11px; }
+
+  /* Signature pad — constrain width */
+  .sig-pad-container canvas { max-width: 100%; height: 100px; }
+
+  /* Sign page header */
+  header.sign-page-header { padding: 14px 16px; }
+
+  /* Billing page */
+  .plan-card { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .plan-actions { width: 100%; }
+  .plan-actions .b-btn { width: 100%; justify-content: center; }
+
+  /* Settings / billing layout */
+  .billing-layout,
+  .settings-layout { padding: 0 12px; }
+  .billing-section,
+  .settings-section { padding: 18px 16px; }
 }
 
 /* ===== Multi-signer support ===== */
