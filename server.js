@@ -2167,8 +2167,8 @@ function requireAdmin(req, res, next) {
 
 app.post('/api/admin/auth', (req, res) => {
   const { secret } = req.body || {};
-  if (!ADMIN_SECRET) return res.status(503).json({ error: 'Admin access not configured. Set ADMIN_SECRET in .env' });
-  if (secret !== ADMIN_SECRET) return res.status(401).json({ error: 'Invalid secret' });
+  // If no ADMIN_SECRET is configured, allow open access
+  if (ADMIN_SECRET && secret !== ADMIN_SECRET) return res.status(401).json({ error: 'Invalid secret' });
   const token = jwt.sign({ admin: true }, JWT_SECRET, { expiresIn: '12h' });
   res.json({ token });
 });

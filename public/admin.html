@@ -592,8 +592,8 @@ document.addEventListener('DOMContentLoaded', () => {
   updateClock();
   setInterval(updateClock, 60000);
 
-  if (adminToken) tryAutoLogin();
-  else showLogin();
+  // Try auto-login (works immediately when no ADMIN_SECRET is set)
+  tryAutoLogin();
 
   // Sidebar nav
   document.querySelectorAll('.s-nav-item[data-section]').forEach(btn => {
@@ -654,9 +654,22 @@ function showAdmin() {
   showSection('overview');
 }
 async function tryAutoLogin() {
-  try {
+  // First try existing token
+  if (adminToken) {
     const r = await aFetch('/api/admin/overview');
-    if (r.ok) showAdmin(); else { localStorage.removeItem('penned_admin_token'); adminToken = ''; showLogin(); }
+    if (r.ok) { showAdmin(); return; }
+  }
+  // Auto-login with empty secret (succeeds when no ADMIN_SECRET is configured)
+  try {
+    const r = await fetch('/api/admin/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ secret: '' }) });
+    if (r.ok) {
+      const data = await r.json();
+      adminToken = data.token;
+      localStorage.setItem('penned_admin_token', adminToken);
+      showAdmin();
+    } else {
+      showLogin(); // password is required
+    }
   } catch { showLogin(); }
 }
 async function doLogin() {
