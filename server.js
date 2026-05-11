@@ -2152,6 +2152,108 @@ app.delete('/api/saved-templates/:id', (req, res) => {
   res.json({ success: true });
 });
 
+// --------------- Admin Panel ---------------
+const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
+
+function requireAdmin(req, res, next) {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (!decoded.admin) return res.status(403).json({ error: 'Forbidden' });
+    next();
+  } catch { res.status(401).json({ error: 'Invalid token' }); }
+}
+
+app.post('/api/admin/auth', (req, res) => {
+  const { secret } = req.body || {};
+  if (!ADMIN_SECRET) return res.status(503).json({ error: 'Admin access not configured. Set ADMIN_SECRET in .env' });
+  if (secret !== ADMIN_SECRET) return res.status(401).json({ error: 'Invalid secret' });
+  const token = jwt.sign({ admin: true }, JWT_SECRET, { expiresIn: '12h' });
+  res.json({ token });
+});
+
+app.get('/api/admin/overview', requireAdmin, (req, res) => {
+  const totalUsers   = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
+  const planCounts   = db.prepare('SELECT plan_type, COUNT(*) as n FROM users GROUP BY plan_type').all();
+  const totalDocs    = db.prepare('SELECT COUNT(*) as n FROM documents').get().n;
+  const docStatuses  = db.prepare('SELECT status, COUNT(*) as n FROM documents GROUP BY status').all();
+  const newUsersMonth= db.prepare("SELECT COUNT(*) as n FROM users WHERE created_at >= date('now','start of month')").get().n;
+  const docsMonth    = db.prepare("SELECT COUNT(*) as n FROM documents WHERE created_at >= date('now','start of month')").get().n;
+  const revenue      = db.prepare('SELECT COALESCE(SUM(amount_cents),0) as t FROM billing_history').get().t;
+  const revenueMonth = db.prepare("SELECT COALESCE(SUM(amount_cents),0) as t FROM billing_history WHERE created_at >= date('now','start of month')").get().t;
+  const recentUsers  = db.prepare('SELECT id,name,email,plan_type,created_at FROM users ORDER BY created_at DESC LIMIT 8').all();
+  const recentDocs   = db.prepare("SELECT d.id,d.title,d.status,d.created_at,u.name as user_name FROM documents d LEFT JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 8").all();
+  res.json({ totalUsers, planCounts, totalDocs, docStatuses, newUsersMonth, docsMonth, revenue, revenueMonth, recentUsers, recentDocs });
+});
+
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  const { search='', plan='all', sort='newest', page=1 } = req.query;
+  const limit = 25, offset = (Number(page)-1)*limit;
+  const conds = ['1=1'], params = [];
+  if (search) { conds.push('(u.name LIKE ? OR u.email LIKE ?)'); params.push(`%${search}%`,`%${search}%`); }
+  if (plan !== 'all') { conds.push('u.plan_type = ?'); params.push(plan); }
+  const where = conds.join(' AND ');
+  const orders = { newest:'u.created_at DESC', oldest:'u.created_at ASC', docs:'total_docs DESC', name:'u.name ASC', spent:'total_spent DESC' };
+  const order = orders[sort] || 'u.created_at DESC';
+  const users = db.prepare(`
+    SELECT u.id,u.name,u.email,u.plan_type,u.documents_sent_this_month,u.created_at,u.stripe_subscription_id,
+      COUNT(d.id) as total_docs,
+      SUM(CASE WHEN d.status='completed' THEN 1 ELSE 0 END) as completed_docs,
+      SUM(CASE WHEN d.status='awaiting_recipient' THEN 1 ELSE 0 END) as pending_docs,
+      COALESCE((SELECT SUM(amount_cents) FROM billing_history WHERE user_id=u.id),0) as total_spent
+    FROM users u LEFT JOIN documents d ON d.user_id=u.id
+    WHERE ${where} GROUP BY u.id ORDER BY ${order} LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
+  const total = db.prepare(`SELECT COUNT(*) as n FROM users u WHERE ${where}`).get(...params).n;
+  res.json({ users, total, page:Number(page), pages:Math.ceil(total/limit) });
+});
+
+app.get('/api/admin/users/:id', requireAdmin, (req, res) => {
+  const user = db.prepare('SELECT id,name,email,plan_type,documents_sent_this_month,monthly_reset_date,created_at,company_name,stripe_customer_id,stripe_subscription_id FROM users WHERE id=?').get(req.params.id);
+  if (!user) return res.status(404).json({ error: 'Not found' });
+  const docs    = db.prepare('SELECT id,title,status,recipient_name,recipient_email,created_at,sender_completed_at,recipient_completed_at FROM documents WHERE user_id=? ORDER BY created_at DESC LIMIT 30').all(req.params.id);
+  const billing = db.prepare('SELECT * FROM billing_history WHERE user_id=? ORDER BY created_at DESC LIMIT 20').all(req.params.id);
+  const stats   = db.prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed, SUM(CASE WHEN status='awaiting_recipient' THEN 1 ELSE 0 END) as pending, SUM(CASE WHEN status='draft' THEN 1 ELSE 0 END) as draft, SUM(CASE WHEN status='expired' THEN 1 ELSE 0 END) as expired FROM documents WHERE user_id=?`).get(req.params.id);
+  res.json({ user, docs, billing, stats });
+});
+
+app.put('/api/admin/users/:id/plan', requireAdmin, (req, res) => {
+  const { plan } = req.body || {};
+  if (!['free','pay_per_doc','unlimited'].includes(plan)) return res.status(400).json({ error: 'Invalid plan' });
+  db.prepare('UPDATE users SET plan_type=? WHERE id=?').run(plan, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM billing_history WHERE user_id=?').run(req.params.id);
+  db.prepare('DELETE FROM password_reset_tokens WHERE user_id=?').run(req.params.id);
+  db.prepare('DELETE FROM documents WHERE user_id=?').run(req.params.id);
+  db.prepare('DELETE FROM users WHERE id=?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/documents', requireAdmin, (req, res) => {
+  const { status='all', search='', page=1 } = req.query;
+  const limit = 25, offset = (Number(page)-1)*limit;
+  const conds = ['1=1'], params = [];
+  if (status !== 'all') { conds.push('d.status=?'); params.push(status); }
+  if (search) { conds.push('(d.title LIKE ? OR d.sender_email LIKE ? OR d.recipient_email LIKE ?)'); params.push(`%${search}%`,`%${search}%`,`%${search}%`); }
+  const where = conds.join(' AND ');
+  const docs  = db.prepare(`SELECT d.id,d.title,d.status,d.sender_name,d.sender_email,d.recipient_name,d.recipient_email,d.created_at,d.recipient_completed_at,u.name as owner_name FROM documents d LEFT JOIN users u ON u.id=d.user_id WHERE ${where} ORDER BY d.created_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
+  const total = db.prepare(`SELECT COUNT(*) as n FROM documents d WHERE ${where}`).get(...params).n;
+  res.json({ docs, total, page:Number(page), pages:Math.ceil(total/limit) });
+});
+
+app.get('/api/admin/billing', requireAdmin, (req, res) => {
+  const { page=1 } = req.query;
+  const limit = 25, offset = (Number(page)-1)*limit;
+  const rows  = db.prepare('SELECT b.*,u.name as user_name,u.email as user_email FROM billing_history b LEFT JOIN users u ON u.id=b.user_id ORDER BY b.created_at DESC LIMIT ? OFFSET ?').all(limit, offset);
+  const total = db.prepare('SELECT COUNT(*) as n FROM billing_history').get().n;
+  const sum   = db.prepare('SELECT COALESCE(SUM(amount_cents),0) as t FROM billing_history').get().t;
+  res.json({ rows, total, sum, page:Number(page), pages:Math.ceil(total/limit) });
+});
+
 // --------------- Page Routes ---------------
 
 // Login & register pages
@@ -2163,6 +2265,11 @@ app.get('/login.html', (req, res) => {
 });
 app.get('/register', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+// Admin panel
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 // Contact page

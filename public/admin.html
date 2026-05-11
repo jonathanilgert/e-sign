@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Penned Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --sidebar-w: 240px;
+      --bg: #f4f5f7;
+      --paper: #ffffff;
+      --sidebar-bg: #0f1117;
+      --sidebar-text: #8b919e;
+      --sidebar-active: #ffffff;
+      --ink: #111827;
+      --ink-2: #374151;
+      --ink-3: #6b7280;
+      --ink-4: #9ca3af;
+      --line: #e5e7eb;
+      --accent: #2d9b8a;
+      --accent-tint: #e8f5f3;
+      --accent-dark: #1f6e62;
+      --danger: #ef4444;
+      --danger-tint: #fef2f2;
+      --warning: #f59e0b;
+      --warning-tint: #fffbeb;
+      --success: #10b981;
+      --success-tint: #ecfdf5;
+      --r: 10px;
+    }
+    html, body { height: 100%; }
+    body { font-family: 'Inter', sans-serif; font-size: 14px; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+
+    /* ── Login overlay ── */
+    #login-overlay {
+      position: fixed; inset: 0; background: var(--sidebar-bg);
+      display: flex; align-items: center; justify-content: center; z-index: 999;
+    }
+    #login-overlay.hidden { display: none; }
+    .login-card {
+      background: #1a1f2e; border-radius: 16px; padding: 44px 40px;
+      width: 100%; max-width: 380px;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+    }
+    .login-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; }
+    .login-logo-mark {
+      width: 32px; height: 32px; border-radius: 8px; background: var(--accent);
+      display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 16px;
+    }
+    .login-logo-name { color: #fff; font-weight: 600; font-size: 18px; }
+    .login-logo-badge {
+      background: rgba(255,255,255,0.08); color: var(--ink-4);
+      font-size: 10px; font-weight: 600; letter-spacing: 0.08em; padding: 3px 8px;
+      border-radius: 999px; text-transform: uppercase;
+    }
+    .login-card h2 { color: #fff; font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+    .login-card p { color: var(--sidebar-text); font-size: 13.5px; margin-bottom: 28px; }
+    .login-card input {
+      width: 100%; padding: 12px 16px; background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+      color: #fff; font-family: inherit; font-size: 14px; outline: none;
+      transition: border-color 0.15s;
+    }
+    .login-card input:focus { border-color: var(--accent); }
+    .login-card input::placeholder { color: #4b5563; }
+    .login-btn {
+      width: 100%; margin-top: 14px; padding: 13px; background: var(--accent);
+      border: none; border-radius: 10px; color: #fff; font-family: inherit;
+      font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s;
+    }
+    .login-btn:hover { background: var(--accent-dark); }
+    .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .login-error { color: #f87171; font-size: 13px; margin-top: 12px; display: none; }
+    .login-error.show { display: block; }
+
+    /* ── Layout ── */
+    #admin-layout { display: flex; height: 100vh; overflow: hidden; }
+    #admin-layout.hidden { display: none; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: var(--sidebar-w); flex-shrink: 0; background: var(--sidebar-bg);
+      display: flex; flex-direction: column; height: 100%; overflow-y: auto;
+    }
+    .sidebar-header {
+      padding: 24px 20px 20px; display: flex; align-items: center; gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .s-logo-mark {
+      width: 28px; height: 28px; border-radius: 7px; background: var(--accent);
+      display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 14px; flex-shrink: 0;
+    }
+    .s-logo-name { color: #fff; font-weight: 600; font-size: 15px; }
+    .s-admin-tag {
+      margin-left: auto; background: rgba(45,155,138,0.18); color: var(--accent);
+      font-size: 9px; font-weight: 700; letter-spacing: 0.1em; padding: 3px 7px;
+      border-radius: 999px; text-transform: uppercase; flex-shrink: 0;
+    }
+    .sidebar-nav { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 2px; }
+    .nav-section-label {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.1em; color: #3d4452;
+      text-transform: uppercase; padding: 12px 8px 6px;
+    }
+    .s-nav-item {
+      display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+      border-radius: 8px; color: var(--sidebar-text); cursor: pointer;
+      font-size: 13.5px; font-weight: 500; transition: background 0.12s, color 0.12s;
+      border: none; background: none; width: 100%; text-align: left;
+    }
+    .s-nav-item svg { flex-shrink: 0; opacity: 0.7; }
+    .s-nav-item:hover { background: rgba(255,255,255,0.06); color: #d1d5db; }
+    .s-nav-item.active { background: rgba(45,155,138,0.15); color: #fff; }
+    .s-nav-item.active svg { opacity: 1; color: var(--accent); }
+    .s-nav-badge {
+      margin-left: auto; background: var(--accent); color: #fff;
+      font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+    }
+    .sidebar-footer {
+      padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.06);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .s-footer-info { flex: 1; min-width: 0; }
+    .s-footer-name { color: #fff; font-size: 13px; font-weight: 500; }
+    .s-footer-role { color: var(--sidebar-text); font-size: 11px; }
+    .s-logout-btn {
+      background: none; border: none; color: var(--sidebar-text); cursor: pointer;
+      padding: 6px; border-radius: 6px; transition: color 0.12s, background 0.12s;
+    }
+    .s-logout-btn:hover { color: #f87171; background: rgba(239,68,68,0.1); }
+
+    /* ── Main area ── */
+    .main-area { flex: 1; overflow-y: auto; display: flex; flex-direction: column; min-width: 0; }
+    .topbar {
+      background: var(--paper); border-bottom: 1px solid var(--line);
+      padding: 0 28px; height: 60px; display: flex; align-items: center;
+      justify-content: space-between; flex-shrink: 0; position: sticky; top: 0; z-index: 10;
+    }
+    .topbar-title { font-size: 16px; font-weight: 600; color: var(--ink); }
+    .topbar-right { display: flex; align-items: center; gap: 12px; }
+    .topbar-time { font-size: 12px; color: var(--ink-3); }
+
+    .page-content { padding: 28px; flex: 1; }
+
+    /* ── Stats grid ── */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .stat-card {
+      background: var(--paper); border-radius: var(--r); padding: 20px;
+      border: 1px solid var(--line);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .stat-card-label { font-size: 12px; font-weight: 500; color: var(--ink-3); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .stat-card-value { font-size: 28px; font-weight: 700; color: var(--ink); line-height: 1; margin-bottom: 6px; }
+    .stat-card-sub { font-size: 12px; color: var(--ink-4); }
+    .stat-card-sub .up { color: var(--success); }
+    .stat-card-sub .neutral { color: var(--ink-3); }
+    .stat-accent { border-top: 3px solid var(--accent); }
+    .stat-success { border-top: 3px solid var(--success); }
+    .stat-warning { border-top: 3px solid var(--warning); }
+    .stat-danger  { border-top: 3px solid var(--danger); }
+
+    /* ── Two-column layout for recent tables ── */
+    .twin-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
+    @media (max-width: 900px) { .twin-tables { grid-template-columns: 1fr; } }
+
+    /* ── Panel card ── */
+    .panel-card {
+      background: var(--paper); border-radius: var(--r); border: 1px solid var(--line);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04); overflow: hidden;
+    }
+    .panel-card-header {
+      padding: 16px 20px; border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .panel-card-title { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+    .panel-card-action { font-size: 12.5px; color: var(--accent); cursor: pointer; font-weight: 500; background: none; border: none; }
+    .panel-card-action:hover { text-decoration: underline; }
+
+    /* ── Table ── */
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th {
+      padding: 10px 16px; text-align: left; font-size: 11px; font-weight: 600;
+      color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em;
+      background: #f9fafb; border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    .data-table td { padding: 11px 16px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink-2); vertical-align: middle; }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr.clickable { cursor: pointer; transition: background 0.1s; }
+    .data-table tr.clickable:hover { background: #f8fafc; }
+    .data-table td strong { color: var(--ink); font-weight: 500; }
+
+    /* ── Toolbar ── */
+    .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .toolbar-search {
+      flex: 1; min-width: 200px; padding: 9px 14px; border: 1px solid var(--line);
+      border-radius: 8px; font-family: inherit; font-size: 13.5px; color: var(--ink);
+      background: var(--paper); outline: none; transition: border-color 0.15s;
+    }
+    .toolbar-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+    .toolbar-select {
+      padding: 9px 14px; border: 1px solid var(--line); border-radius: 8px;
+      font-family: inherit; font-size: 13.5px; color: var(--ink);
+      background: var(--paper); outline: none; cursor: pointer;
+    }
+
+    /* ── Badges / pills ── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600;
+      letter-spacing: 0.02em; white-space: nowrap;
+    }
+    .badge-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .badge-free     { background: #f3f4f6; color: #374151; }
+    .badge-payg     { background: var(--warning-tint); color: #92400e; }
+    .badge-unlimited{ background: var(--accent-tint); color: var(--accent-dark); }
+    .badge-draft    { background: #f3f4f6; color: #374151; }
+    .badge-awaiting { background: var(--warning-tint); color: #92400e; }
+    .badge-completed{ background: var(--success-tint); color: #065f46; }
+    .badge-expired  { background: var(--danger-tint); color: #991b1b; }
+
+    /* ── Pagination ── */
+    .pagination { display: flex; align-items: center; gap: 6px; margin-top: 16px; }
+    .page-btn {
+      padding: 6px 12px; border: 1px solid var(--line); border-radius: 7px;
+      background: var(--paper); font-family: inherit; font-size: 12.5px;
+      color: var(--ink-2); cursor: pointer; transition: border-color 0.12s;
+    }
+    .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .page-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .page-info { font-size: 12.5px; color: var(--ink-3); margin: 0 6px; }
+
+    /* ── Detail drawer ── */
+    .drawer-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+      z-index: 100; display: none; backdrop-filter: blur(2px);
+    }
+    .drawer-overlay.open { display: block; }
+    .drawer {
+      position: fixed; top: 0; right: 0; bottom: 0; width: 480px; max-width: 95vw;
+      background: var(--paper); z-index: 101; display: flex; flex-direction: column;
+      transform: translateX(100%); transition: transform 0.28s cubic-bezier(.4,0,.2,1);
+      box-shadow: -8px 0 40px rgba(0,0,0,0.15);
+    }
+    .drawer.open { transform: translateX(0); }
+    .drawer-header {
+      padding: 20px 24px; border-bottom: 1px solid var(--line);
+      display: flex; align-items: flex-start; gap: 14px; flex-shrink: 0;
+    }
+    .drawer-avatar {
+      width: 44px; height: 44px; border-radius: 12px; background: var(--accent-tint);
+      color: var(--accent-dark); display: grid; place-items: center;
+      font-weight: 700; font-size: 18px; flex-shrink: 0; text-transform: uppercase;
+    }
+    .drawer-header-info { flex: 1; min-width: 0; }
+    .drawer-name { font-size: 16px; font-weight: 600; color: var(--ink); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .drawer-email { font-size: 13px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .drawer-close {
+      background: none; border: none; color: var(--ink-3); cursor: pointer;
+      padding: 6px; border-radius: 6px; transition: background 0.12s; flex-shrink: 0;
+    }
+    .drawer-close:hover { background: var(--line); color: var(--ink); }
+    .drawer-body { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; }
+    .drawer-section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); margin-bottom: 10px; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .info-item {}
+    .info-label { font-size: 11px; color: var(--ink-3); font-weight: 500; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .info-value { font-size: 13.5px; color: var(--ink); font-weight: 500; }
+    .drawer-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+    .d-stat { background: #f9fafb; border-radius: 8px; padding: 12px; text-align: center; }
+    .d-stat-val { font-size: 20px; font-weight: 700; color: var(--ink); }
+    .d-stat-label { font-size: 10px; color: var(--ink-3); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .plan-changer { display: flex; align-items: center; gap: 10px; }
+    .plan-select {
+      flex: 1; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px;
+      font-family: inherit; font-size: 13.5px; color: var(--ink);
+      background: var(--paper); outline: none; cursor: pointer;
+    }
+    .save-plan-btn {
+      padding: 9px 16px; background: var(--accent); color: #fff;
+      border: none; border-radius: 8px; font-family: inherit; font-size: 13px;
+      font-weight: 500; cursor: pointer; transition: background 0.15s; white-space: nowrap;
+    }
+    .save-plan-btn:hover { background: var(--accent-dark); }
+    .drawer-doc-list { display: flex; flex-direction: column; gap: 6px; }
+    .drawer-doc-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 12px; background: #f9fafb; border-radius: 8px;
+    }
+    .drawer-doc-title { font-size: 13px; color: var(--ink); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+    .drawer-doc-meta { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+    .billing-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--line); }
+    .billing-row:last-child { border-bottom: none; }
+    .billing-desc { font-size: 13px; color: var(--ink); }
+    .billing-date { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+    .billing-amount { font-size: 14px; font-weight: 600; color: var(--success); }
+    .drawer-footer { padding: 16px 24px; border-top: 1px solid var(--line); flex-shrink: 0; }
+    .delete-user-btn {
+      width: 100%; padding: 10px; background: var(--danger-tint); color: var(--danger);
+      border: 1px solid #fecaca; border-radius: 8px; font-family: inherit;
+      font-size: 13.5px; font-weight: 500; cursor: pointer; transition: background 0.15s;
+    }
+    .delete-user-btn:hover { background: #fee2e2; }
+
+    /* ── Empty state ── */
+    .empty-state { text-align: center; padding: 48px 20px; color: var(--ink-3); }
+    .empty-state svg { margin-bottom: 12px; opacity: 0.4; }
+    .empty-state p { font-size: 14px; }
+
+    /* ── Loading ── */
+    .loading { text-align: center; padding: 40px; color: var(--ink-3); font-size: 13px; }
+
+    /* ── Confirm dialog ── */
+    .confirm-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200;
+      display: none; align-items: center; justify-content: center;
+    }
+    .confirm-overlay.open { display: flex; }
+    .confirm-dialog {
+      background: var(--paper); border-radius: 14px; padding: 28px 28px 24px;
+      max-width: 380px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    }
+    .confirm-title { font-size: 17px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
+    .confirm-body  { font-size: 14px; color: var(--ink-3); margin-bottom: 24px; line-height: 1.5; }
+    .confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .btn-cancel {
+      padding: 9px 18px; border: 1px solid var(--line); border-radius: 8px;
+      background: var(--paper); font-family: inherit; font-size: 13.5px; cursor: pointer;
+    }
+    .btn-cancel:hover { background: #f9fafb; }
+    .btn-confirm-delete {
+      padding: 9px 18px; border: none; border-radius: 8px; background: var(--danger);
+      color: #fff; font-family: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer;
+    }
+    .btn-confirm-delete:hover { background: #dc2626; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px; background: var(--ink);
+      color: #fff; padding: 12px 18px; border-radius: 10px; font-size: 13.5px;
+      font-weight: 500; z-index: 999; transform: translateY(20px); opacity: 0;
+      transition: all 0.25s; pointer-events: none;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { background: var(--success); }
+    .toast.error   { background: var(--danger); }
+
+    /* ── Util ── */
+    .hidden { display: none !important; }
+    .text-muted { color: var(--ink-3); }
+    .text-small { font-size: 12px; }
+    .gap { height: 20px; }
+  </style>
+</head>
+<body>
+
+<!-- Login overlay -->
+<div id="login-overlay">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-mark">P</div>
+      <span class="login-logo-name">Penned</span>
+      <span class="login-logo-badge">Admin</span>
+    </div>
+    <h2>Admin Access</h2>
+    <p>Enter your admin secret to continue.</p>
+    <input type="password" id="admin-secret-input" placeholder="Admin secret" autocomplete="current-password">
+    <button class="login-btn" id="login-btn">Enter Panel</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- Admin layout -->
+<div id="admin-layout" class="hidden">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="s-logo-mark">P</div>
+      <span class="s-logo-name">Penned</span>
+      <span class="s-admin-tag">Admin</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <button class="s-nav-item active" data-section="overview">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Overview
+      </button>
+      <button class="s-nav-item" data-section="members">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Members
+      </button>
+      <button class="s-nav-item" data-section="documents">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Documents
+      </button>
+      <button class="s-nav-item" data-section="billing">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        Billing
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div style="width:32px;height:32px;border-radius:8px;background:rgba(45,155,138,0.18);display:grid;place-items:center;color:var(--accent);font-weight:700;font-size:14px;flex-shrink:0">A</div>
+      <div class="s-footer-info">
+        <div class="s-footer-name">Administrator</div>
+        <div class="s-footer-role">Full access</div>
+      </div>
+      <button class="s-logout-btn" id="logout-btn" title="Sign out">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main area -->
+  <div class="main-area">
+    <div class="topbar">
+      <span class="topbar-title" id="topbar-title">Overview</span>
+      <div class="topbar-right">
+        <span class="topbar-time" id="topbar-time"></span>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- ===== Overview ===== -->
+      <section id="section-overview">
+        <div class="stats-grid" id="overview-stats">
+          <div class="loading">Loading stats…</div>
+        </div>
+        <div class="twin-tables">
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <span class="panel-card-title">Recent Members</span>
+              <button class="panel-card-action" onclick="showSection('members')">View all →</button>
+            </div>
+            <div id="recent-members-table"><div class="loading">Loading…</div></div>
+          </div>
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <span class="panel-card-title">Recent Documents</span>
+              <button class="panel-card-action" onclick="showSection('documents')">View all →</button>
+            </div>
+            <div id="recent-docs-table"><div class="loading">Loading…</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== Members ===== -->
+      <section id="section-members" class="hidden">
+        <div class="toolbar">
+          <input class="toolbar-search" id="member-search" placeholder="Search by name or email…" type="search">
+          <select class="toolbar-select" id="member-plan-filter">
+            <option value="all">All plans</option>
+            <option value="free">Free</option>
+            <option value="pay_per_doc">Pay as you go</option>
+            <option value="unlimited">Unlimited</option>
+          </select>
+          <select class="toolbar-select" id="member-sort">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="name">Name A–Z</option>
+            <option value="docs">Most docs</option>
+            <option value="spent">Most spent</option>
+          </select>
+        </div>
+        <div class="panel-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Member</th>
+                <th>Plan</th>
+                <th>Total Docs</th>
+                <th>Completed</th>
+                <th>This Month</th>
+                <th>Revenue</th>
+                <th>Joined</th>
+              </tr>
+            </thead>
+            <tbody id="members-tbody"><tr><td colspan="7"><div class="loading">Loading…</div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="members-pagination"></div>
+      </section>
+
+      <!-- ===== Documents ===== -->
+      <section id="section-documents" class="hidden">
+        <div class="toolbar">
+          <input class="toolbar-search" id="doc-search" placeholder="Search by title or email…" type="search">
+          <select class="toolbar-select" id="doc-status-filter">
+            <option value="all">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="awaiting_recipient">Awaiting signature</option>
+            <option value="completed">Completed</option>
+            <option value="expired">Expired</option>
+          </select>
+        </div>
+        <div class="panel-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Owner</th>
+                <th>Recipient</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Completed</th>
+              </tr>
+            </thead>
+            <tbody id="docs-tbody"><tr><td colspan="6"><div class="loading">Loading…</div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="docs-pagination"></div>
+      </section>
+
+      <!-- ===== Billing ===== -->
+      <section id="section-billing" class="hidden">
+        <div class="panel-card">
+          <div class="panel-card-header">
+            <span class="panel-card-title">All Transactions</span>
+            <span id="billing-total-badge" class="text-muted text-small"></span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Description</th>
+                <th>Amount</th>
+                <th>Type</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="billing-tbody"><tr><td colspan="5"><div class="loading">Loading…</div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="billing-pagination"></div>
+      </section>
+
+    </div><!-- /page-content -->
+  </div><!-- /main-area -->
+</div><!-- /admin-layout -->
+
+<!-- User detail drawer -->
+<div class="drawer-overlay" id="drawer-overlay"></div>
+<div class="drawer" id="user-drawer">
+  <div class="drawer-header">
+    <div class="drawer-avatar" id="drawer-avatar">?</div>
+    <div class="drawer-header-info">
+      <div class="drawer-name" id="drawer-name">—</div>
+      <div class="drawer-email" id="drawer-email">—</div>
+    </div>
+    <button class="drawer-close" id="drawer-close">
+      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body" id="drawer-body">
+    <div class="loading">Loading…</div>
+  </div>
+  <div class="drawer-footer">
+    <button class="delete-user-btn" id="delete-user-btn">Delete this account</button>
+  </div>
+</div>
+
+<!-- Confirm delete dialog -->
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-dialog">
+    <div class="confirm-title">Delete account?</div>
+    <div class="confirm-body" id="confirm-body">This will permanently delete the user and all their documents and billing history. This cannot be undone.</div>
+    <div class="confirm-actions">
+      <button class="btn-cancel" id="confirm-cancel">Cancel</button>
+      <button class="btn-confirm-delete" id="confirm-delete">Delete permanently</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let adminToken = localStorage.getItem('penned_admin_token') || '';
+let currentSection = 'overview';
+let membersPage = 1, docsPage = 1, billingPage = 1;
+let currentUserId = null;
+let memberSearchTimer = null, docSearchTimer = null;
+
+// ── Init ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  updateClock();
+  setInterval(updateClock, 60000);
+
+  if (adminToken) tryAutoLogin();
+  else showLogin();
+
+  // Sidebar nav
+  document.querySelectorAll('.s-nav-item[data-section]').forEach(btn => {
+    btn.addEventListener('click', () => showSection(btn.dataset.section));
+  });
+
+  // Login
+  document.getElementById('login-btn').addEventListener('click', doLogin);
+  document.getElementById('admin-secret-input').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+  // Logout
+  document.getElementById('logout-btn').addEventListener('click', () => {
+    localStorage.removeItem('penned_admin_token');
+    adminToken = '';
+    showLogin();
+  });
+
+  // Drawer close
+  document.getElementById('drawer-close').addEventListener('click', closeDrawer);
+  document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
+
+  // Delete user
+  document.getElementById('delete-user-btn').addEventListener('click', () => {
+    const name = document.getElementById('drawer-name').textContent;
+    document.getElementById('confirm-body').textContent = `This will permanently delete "${name}" and all their documents and billing history. This cannot be undone.`;
+    document.getElementById('confirm-overlay').classList.add('open');
+  });
+  document.getElementById('confirm-cancel').addEventListener('click', () => document.getElementById('confirm-overlay').classList.remove('open'));
+  document.getElementById('confirm-delete').addEventListener('click', confirmDeleteUser);
+
+  // Search debounce
+  document.getElementById('member-search').addEventListener('input', () => {
+    clearTimeout(memberSearchTimer);
+    memberSearchTimer = setTimeout(() => { membersPage = 1; loadMembers(); }, 350);
+  });
+  document.getElementById('member-plan-filter').addEventListener('change', () => { membersPage = 1; loadMembers(); });
+  document.getElementById('member-sort').addEventListener('change', () => { membersPage = 1; loadMembers(); });
+
+  document.getElementById('doc-search').addEventListener('input', () => {
+    clearTimeout(docSearchTimer);
+    docSearchTimer = setTimeout(() => { docsPage = 1; loadDocuments(); }, 350);
+  });
+  document.getElementById('doc-status-filter').addEventListener('change', () => { docsPage = 1; loadDocuments(); });
+});
+
+function updateClock() {
+  document.getElementById('topbar-time').textContent = new Date().toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+// ── Auth ───────────────────────────────────────────────────────────────────
+function showLogin() {
+  document.getElementById('login-overlay').classList.remove('hidden');
+  document.getElementById('admin-layout').classList.add('hidden');
+}
+function showAdmin() {
+  document.getElementById('login-overlay').classList.add('hidden');
+  document.getElementById('admin-layout').classList.remove('hidden');
+  showSection('overview');
+}
+async function tryAutoLogin() {
+  try {
+    const r = await aFetch('/api/admin/overview');
+    if (r.ok) showAdmin(); else { localStorage.removeItem('penned_admin_token'); adminToken = ''; showLogin(); }
+  } catch { showLogin(); }
+}
+async function doLogin() {
+  const secret = document.getElementById('admin-secret-input').value;
+  const btn = document.getElementById('login-btn');
+  const err = document.getElementById('login-error');
+  err.classList.remove('show');
+  btn.disabled = true; btn.textContent = 'Verifying…';
+  try {
+    const r = await fetch('/api/admin/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ secret }) });
+    const data = await r.json();
+    if (r.ok) {
+      adminToken = data.token;
+      localStorage.setItem('penned_admin_token', adminToken);
+      showAdmin();
+    } else {
+      err.textContent = data.error || 'Invalid secret';
+      err.classList.add('show');
+    }
+  } catch { err.textContent = 'Network error'; err.classList.add('show'); }
+  finally { btn.disabled = false; btn.textContent = 'Enter Panel'; }
+}
+
+// ── Fetch helper ───────────────────────────────────────────────────────────
+function aFetch(url, opts = {}) {
+  return fetch(url, { ...opts, headers: { 'Authorization': `Bearer ${adminToken}`, 'Content-Type':'application/json', ...(opts.headers||{}) } });
+}
+
+// ── Sections ───────────────────────────────────────────────────────────────
+function showSection(name) {
+  currentSection = name;
+  document.querySelectorAll('.s-nav-item').forEach(b => b.classList.toggle('active', b.dataset.section === name));
+  document.querySelectorAll('[id^="section-"]').forEach(s => s.classList.add('hidden'));
+  document.getElementById(`section-${name}`).classList.remove('hidden');
+  const titles = { overview:'Overview', members:'Members', documents:'Documents', billing:'Billing' };
+  document.getElementById('topbar-title').textContent = titles[name] || name;
+  if (name === 'overview')   loadOverview();
+  if (name === 'members')    loadMembers();
+  if (name === 'documents')  loadDocuments();
+  if (name === 'billing')    loadBilling();
+}
+
+// ── Overview ───────────────────────────────────────────────────────────────
+async function loadOverview() {
+  const r = await aFetch('/api/admin/overview');
+  if (!r.ok) return;
+  const d = await r.json();
+
+  const planMap = {};
+  (d.planCounts || []).forEach(p => planMap[p.plan_type] = p.n);
+  const statusMap = {};
+  (d.docStatuses || []).forEach(s => statusMap[s.status] = s.n);
+
+  document.getElementById('overview-stats').innerHTML = `
+    ${statCard('Total Members', d.totalUsers, `+${d.newUsersMonth} this month`, 'stat-accent')}
+    ${statCard('Unlimited', planMap.unlimited||0, `${planMap.pay_per_doc||0} pay-as-you-go`, 'stat-success')}
+    ${statCard('Free Plan', planMap.free||0, `of ${d.totalUsers} total users`, '')}
+    ${statCard('Total Documents', d.totalDocs, `+${d.docsMonth} this month`, 'stat-accent')}
+    ${statCard('Completed', statusMap.completed||0, `${statusMap.awaiting_recipient||0} awaiting`, 'stat-success')}
+    ${statCard('Total Revenue', '$'+(d.revenue/100).toFixed(2), '$'+(d.revenueMonth/100).toFixed(2)+' this month', 'stat-warning')}
+  `;
+
+  // Recent members mini-table
+  document.getElementById('recent-members-table').innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Name</th><th>Plan</th><th>Joined</th></tr></thead>
+      <tbody>${(d.recentUsers||[]).map(u => `
+        <tr class="clickable" onclick="openUserDrawer('${u.id}')">
+          <td><strong>${esc(u.name)}</strong><br><span class="text-muted text-small">${esc(u.email)}</span></td>
+          <td>${planBadge(u.plan_type)}</td>
+          <td class="text-muted text-small">${fmtDate(u.created_at)}</td>
+        </tr>`).join('')}</tbody>
+    </table>`;
+
+  // Recent docs mini-table
+  document.getElementById('recent-docs-table').innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Title</th><th>Owner</th><th>Status</th></tr></thead>
+      <tbody>${(d.recentDocs||[]).map(doc => `
+        <tr>
+          <td><strong>${esc(doc.title)}</strong></td>
+          <td class="text-muted text-small">${esc(doc.user_name||'—')}</td>
+          <td>${statusBadge(doc.status)}</td>
+        </tr>`).join('')}</tbody>
+    </table>`;
+}
+
+function statCard(label, value, sub, cls) {
+  return `<div class="stat-card ${cls}">
+    <div class="stat-card-label">${label}</div>
+    <div class="stat-card-value">${value}</div>
+    <div class="stat-card-sub"><span class="neutral">${sub}</span></div>
+  </div>`;
+}
+
+// ── Members ────────────────────────────────────────────────────────────────
+async function loadMembers() {
+  const search = document.getElementById('member-search').value;
+  const plan   = document.getElementById('member-plan-filter').value;
+  const sort   = document.getElementById('member-sort').value;
+  const params = new URLSearchParams({ search, plan, sort, page: membersPage });
+  const r = await aFetch('/api/admin/users?' + params);
+  if (!r.ok) return;
+  const d = await r.json();
+
+  const tbody = document.getElementById('members-tbody');
+  if (!d.users.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>No members found.</p></div></td></tr>`;
+  } else {
+    tbody.innerHTML = d.users.map(u => `
+      <tr class="clickable" onclick="openUserDrawer('${u.id}')">
+        <td>
+          <strong>${esc(u.name)}</strong>
+          <br><span class="text-muted text-small">${esc(u.email)}</span>
+        </td>
+        <td>${planBadge(u.plan_type)}</td>
+        <td>${u.total_docs || 0}</td>
+        <td>${u.completed_docs || 0}</td>
+        <td>${u.documents_sent_this_month || 0}</td>
+        <td>${u.total_spent ? '$'+(u.total_spent/100).toFixed(2) : '$0.00'}</td>
+        <td class="text-muted text-small">${fmtDate(u.created_at)}</td>
+      </tr>`).join('');
+  }
+  renderPagination('members-pagination', d.page, d.pages, p => { membersPage = p; loadMembers(); });
+}
+
+// ── Documents ──────────────────────────────────────────────────────────────
+async function loadDocuments() {
+  const search = document.getElementById('doc-search').value;
+  const status = document.getElementById('doc-status-filter').value;
+  const params = new URLSearchParams({ search, status, page: docsPage });
+  const r = await aFetch('/api/admin/documents?' + params);
+  if (!r.ok) return;
+  const d = await r.json();
+
+  const tbody = document.getElementById('docs-tbody');
+  if (!d.docs.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>No documents found.</p></div></td></tr>`;
+  } else {
+    tbody.innerHTML = d.docs.map(doc => `
+      <tr>
+        <td><strong>${esc(doc.title)}</strong></td>
+        <td class="text-muted text-small">${esc(doc.owner_name||doc.sender_name||'—')}</td>
+        <td class="text-muted text-small">${esc(doc.recipient_name||'—')}<br>${esc(doc.recipient_email||'')}</td>
+        <td>${statusBadge(doc.status)}</td>
+        <td class="text-muted text-small">${fmtDate(doc.created_at)}</td>
+        <td class="text-muted text-small">${doc.recipient_completed_at ? fmtDate(doc.recipient_completed_at) : '—'}</td>
+      </tr>`).join('');
+  }
+  renderPagination('docs-pagination', d.page, d.pages, p => { docsPage = p; loadDocuments(); });
+}
+
+// ── Billing ────────────────────────────────────────────────────────────────
+async function loadBilling() {
+  const params = new URLSearchParams({ page: billingPage });
+  const r = await aFetch('/api/admin/billing?' + params);
+  if (!r.ok) return;
+  const d = await r.json();
+
+  document.getElementById('billing-total-badge').textContent = `Total revenue: $${(d.sum/100).toFixed(2)}`;
+
+  const tbody = document.getElementById('billing-tbody');
+  if (!d.rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>No transactions yet.</p></div></td></tr>`;
+  } else {
+    tbody.innerHTML = d.rows.map(b => `
+      <tr>
+        <td>
+          <strong>${esc(b.user_name||'—')}</strong>
+          <br><span class="text-muted text-small">${esc(b.user_email||'')}</span>
+        </td>
+        <td>${esc(b.description||'—')}</td>
+        <td style="color:var(--success);font-weight:600">$${(b.amount_cents/100).toFixed(2)}</td>
+        <td><span class="badge badge-completed">${esc(b.type)}</span></td>
+        <td class="text-muted text-small">${fmtDate(b.created_at)}</td>
+      </tr>`).join('');
+  }
+  renderPagination('billing-pagination', d.page, d.pages, p => { billingPage = p; loadBilling(); });
+}
+
+// ── User detail drawer ─────────────────────────────────────────────────────
+async function openUserDrawer(id) {
+  currentUserId = id;
+  document.getElementById('drawer-body').innerHTML = '<div class="loading">Loading…</div>';
+  document.getElementById('drawer-overlay').classList.add('open');
+  document.getElementById('user-drawer').classList.add('open');
+
+  const r = await aFetch('/api/admin/users/' + id);
+  if (!r.ok) { document.getElementById('drawer-body').innerHTML = '<div class="empty-state"><p>Failed to load user.</p></div>'; return; }
+  const d = await r.json();
+  const { user, docs, billing, stats } = d;
+
+  document.getElementById('drawer-avatar').textContent = (user.name||'?')[0].toUpperCase();
+  document.getElementById('drawer-name').textContent = user.name;
+  document.getElementById('drawer-email').textContent = user.email;
+
+  document.getElementById('drawer-body').innerHTML = `
+    <div>
+      <div class="drawer-section-title">Document Activity</div>
+      <div class="drawer-stats">
+        <div class="d-stat"><div class="d-stat-val">${stats.total||0}</div><div class="d-stat-label">Total</div></div>
+        <div class="d-stat"><div class="d-stat-val" style="color:var(--success)">${stats.completed||0}</div><div class="d-stat-label">Done</div></div>
+        <div class="d-stat"><div class="d-stat-val" style="color:var(--warning)">${stats.pending||0}</div><div class="d-stat-label">Pending</div></div>
+        <div class="d-stat"><div class="d-stat-val" style="color:var(--danger)">${stats.expired||0}</div><div class="d-stat-label">Expired</div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="drawer-section-title">Account Info</div>
+      <div class="info-grid">
+        <div class="info-item"><div class="info-label">Joined</div><div class="info-value">${fmtDate(user.created_at)}</div></div>
+        <div class="info-item"><div class="info-label">This Month</div><div class="info-value">${user.documents_sent_this_month||0} docs</div></div>
+        <div class="info-item"><div class="info-label">Company</div><div class="info-value">${esc(user.company_name||'—')}</div></div>
+        <div class="info-item"><div class="info-label">Stripe ID</div><div class="info-value text-small text-muted">${user.stripe_customer_id ? user.stripe_customer_id.slice(0,16)+'…' : '—'}</div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="drawer-section-title">Plan</div>
+      <div class="plan-changer">
+        <select class="plan-select" id="plan-select-${user.id}">
+          <option value="free"        ${user.plan_type==='free'?'selected':''}>Free</option>
+          <option value="pay_per_doc" ${user.plan_type==='pay_per_doc'?'selected':''}>Pay as you go</option>
+          <option value="unlimited"   ${user.plan_type==='unlimited'?'selected':''}>Unlimited</option>
+        </select>
+        <button class="save-plan-btn" onclick="savePlan('${user.id}')">Save</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="drawer-section-title">Recent Documents (${docs.length})</div>
+      ${docs.length ? `<div class="drawer-doc-list">${docs.map(doc => `
+        <div class="drawer-doc-row">
+          <div>
+            <div class="drawer-doc-title">${esc(doc.title)}</div>
+            <div class="drawer-doc-meta">To: ${esc(doc.recipient_name||doc.recipient_email||'—')}</div>
+          </div>
+          ${statusBadge(doc.status)}
+        </div>`).join('')}</div>`
+      : '<div class="text-muted text-small">No documents yet.</div>'}
+    </div>
+
+    <div>
+      <div class="drawer-section-title">Billing History (${billing.length})</div>
+      ${billing.length ? billing.map(b => `
+        <div class="billing-row">
+          <div>
+            <div class="billing-desc">${esc(b.description||b.type)}</div>
+            <div class="billing-date">${fmtDate(b.created_at)}</div>
+          </div>
+          <div class="billing-amount">$${(b.amount_cents/100).toFixed(2)}</div>
+        </div>`).join('')
+      : '<div class="text-muted text-small">No payments yet.</div>'}
+    </div>
+  `;
+}
+
+function closeDrawer() {
+  document.getElementById('drawer-overlay').classList.remove('open');
+  document.getElementById('user-drawer').classList.remove('open');
+  document.getElementById('confirm-overlay').classList.remove('open');
+  currentUserId = null;
+}
+
+async function savePlan(userId) {
+  const plan = document.getElementById(`plan-select-${userId}`).value;
+  const r = await aFetch('/api/admin/users/' + userId + '/plan', { method:'PUT', body: JSON.stringify({ plan }) });
+  if (r.ok) { showToast('Plan updated', 'success'); loadMembers(); }
+  else showToast('Failed to update plan', 'error');
+}
+
+async function confirmDeleteUser() {
+  if (!currentUserId) return;
+  const r = await aFetch('/api/admin/users/' + currentUserId, { method:'DELETE' });
+  document.getElementById('confirm-overlay').classList.remove('open');
+  if (r.ok) {
+    closeDrawer();
+    showToast('User deleted', 'success');
+    if (currentSection === 'members') loadMembers();
+    else loadOverview();
+  } else showToast('Delete failed', 'error');
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function planBadge(plan) {
+  const map = {
+    free:        ['badge-free',      'Free'],
+    pay_per_doc: ['badge-payg',      'Pay as you go'],
+    unlimited:   ['badge-unlimited', 'Unlimited'],
+  };
+  const [cls, label] = map[plan] || ['badge-free', plan];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+function statusBadge(s) {
+  const map = {
+    draft:              ['badge-draft',     'Draft'],
+    awaiting_recipient: ['badge-awaiting',  'Awaiting'],
+    completed:          ['badge-completed', 'Completed'],
+    expired:            ['badge-expired',   'Expired'],
+  };
+  const [cls, label] = map[s] || ['badge-draft', s];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function renderPagination(containerId, page, pages, cb) {
+  const el = document.getElementById(containerId);
+  if (pages <= 1) { el.innerHTML = ''; return; }
+  let html = `<button class="page-btn" ${page<=1?'disabled':''} onclick="(${cb})(${page-1})">← Prev</button>`;
+  const start = Math.max(1, page-2), end = Math.min(pages, page+2);
+  if (start > 1) html += `<button class="page-btn" onclick="(${cb})(1)">1</button>${start>2?'<span class="page-info">…</span>':''}`;
+  for (let i=start; i<=end; i++) html += `<button class="page-btn${i===page?' active':''}" onclick="(${cb})(${i})">${i}</button>`;
+  if (end < pages) html += `${end<pages-1?'<span class="page-info">…</span>':''}<button class="page-btn" onclick="(${cb})(${pages})">${pages}</button>`;
+  html += `<button class="page-btn" ${page>=pages?'disabled':''} onclick="(${cb})(${page+1})">Next →</button>`;
+  html += `<span class="page-info">Page ${page} of ${pages}</span>`;
+  el.innerHTML = html;
+}
+
+let toastTimer;
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' '+type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = 'toast', 3000);
+}
+</script>
+</body>
+</html>
