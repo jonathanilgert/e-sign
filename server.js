@@ -11,6 +11,7 @@ const { execSync } = require('child_process');
 const { Resend } = require('resend');
 const nodemailer = require('nodemailer');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+const { getPdfPageSizes, normalizedFieldBox, imageFitDimensions } = require('./lib/pdf-signing');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
@@ -1686,14 +1687,13 @@ app.post('/api/documents/:id/sign-sender', async (req, res) => {
 
     // Build overlay PDF with sender fields, then stamp onto original
     const pdfBytes = fs.readFileSync(doc.pdf_path);
-    const origPdf = await PDFDocument.load(pdfBytes);
+    const pageSizes = await getPdfPageSizes(pdfBytes);
     const overlay = await PDFDocument.create();
     const font = await overlay.embedFont(StandardFonts.Helvetica);
 
     // Create blank pages matching original dimensions
-    for (let i = 0; i < origPdf.getPageCount(); i++) {
-      const p = origPdf.getPage(i);
-      overlay.addPage([p.getWidth(), p.getHeight()]);
+    for (const p of pageSizes) {
+      overlay.addPage([p.width, p.height]);
     }
 
     const fields = JSON.parse(doc.fields || '[]');
@@ -1716,18 +1716,22 @@ app.post('/api/documents/:id/sign-sender', async (req, res) => {
     }
     console.log('[SENDER SIGN] fieldValues:', JSON.stringify(fieldValues));
     console.log('[SENDER SIGN] has signature:', !!signatureDataUrl);
-    for (const field of fields) {
-      if (field.role !== 'sender') continue;
+    for (const rawField of fields) {
+      if (rawField.role !== 'sender') continue;
+      const field = normalizedFieldBox(rawField);
+      if (field.page >= overlay.getPageCount()) continue;
       const page = overlay.getPage(field.page);
       if (field.type === 'signature') {
         if (!signatureDataUrl) continue;
         const sigBytes = Buffer.from(signatureDataUrl.split(',')[1], 'base64');
         const sigImage = await overlay.embedPng(sigBytes);
-        const dims = sigImage.scale(Math.min(field.width / sigImage.width, field.height / sigImage.height));
+        const dims = imageFitDimensions(sigImage, field);
         page.drawImage(sigImage, { x: field.x, y: field.y, width: dims.width, height: dims.height });
+        Object.assign(rawField, field);
         console.log('[SENDER SIGN] Drew signature at', field.x, field.y);
       } else if (fieldValues[field.id]) {
         drawFieldText(page, font, fieldValues[field.id], field);
+        Object.assign(rawField, field);
         console.log('[SENDER SIGN] Drew text "' + fieldValues[field.id] + '" in field at', field.x, field.y, 'w:', field.width, 'h:', field.height);
       }
     }
@@ -1834,13 +1838,12 @@ app.post('/api/documents/:id/sign-recipient', async (req, res) => {
 
     // Build overlay PDF
     const pdfBytes = fs.readFileSync(doc.pdf_path);
-    const origPdf = await PDFDocument.load(pdfBytes);
+    const pageSizes = await getPdfPageSizes(pdfBytes);
     const overlay = await PDFDocument.create();
     const font = await overlay.embedFont(StandardFonts.Helvetica);
 
-    for (let i = 0; i < origPdf.getPageCount(); i++) {
-      const p = origPdf.getPage(i);
-      overlay.addPage([p.getWidth(), p.getHeight()]);
+    for (const p of pageSizes) {
+      overlay.addPage([p.width, p.height]);
     }
 
     const fields = JSON.parse(doc.fields || '[]');
@@ -1856,17 +1859,21 @@ app.post('/api/documents/:id/sign-recipient', async (req, res) => {
 
     console.log('[RECIPIENT SIGN] signerIdx:', signerIdx, 'of', totalSigners);
 
-    for (const field of fields) {
-      if (!fieldBelongsHere(field)) continue;
+    for (const rawField of fields) {
+      if (!fieldBelongsHere(rawField)) continue;
+      const field = normalizedFieldBox(rawField);
+      if (field.page >= overlay.getPageCount()) continue;
       const page = overlay.getPage(field.page);
       if (field.type === 'signature') {
         if (!signatureDataUrl) continue;
         const sigBytes = Buffer.from(signatureDataUrl.split(',')[1], 'base64');
         const sigImage = await overlay.embedPng(sigBytes);
-        const dims = sigImage.scale(Math.min(field.width / sigImage.width, field.height / sigImage.height));
+        const dims = imageFitDimensions(sigImage, field);
         page.drawImage(sigImage, { x: field.x, y: field.y, width: dims.width, height: dims.height });
+        Object.assign(rawField, field);
       } else if (fieldValues[field.id]) {
         drawFieldText(page, font, fieldValues[field.id], field);
+        Object.assign(rawField, field);
       }
     }
 
