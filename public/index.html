@@ -325,6 +325,19 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   </script>
   <div class="target-cursor" id="target-cursor"></div>
+
+  <footer class="app-footer">
+    <a href="/privacy">Privacy</a>
+    <a href="/terms">Terms</a>
+    <a href="/cookies">Cookies</a>
+    <a href="/disclaimer">Disclaimer</a>
+    <span class="app-footer-copy">&copy; <span id="app-footer-year"></span> Penned</span>
+  </footer>
+  <script>
+    var __y = document.getElementById('app-footer-year');
+    if (__y) __y.textContent = new Date().getFullYear();
+  </script>
+
   <script src="/app.js?v=15"></script>
 </body>
 </html>

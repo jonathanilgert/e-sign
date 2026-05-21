@@ -251,6 +251,31 @@ var _pricePatchInterval = setInterval(function() {
   clearInterval(_pricePatchInterval);
 }, 200);
 setTimeout(function() { clearInterval(_pricePatchInterval); }, 10000);
+
+// Append a legal-links footer below the rendered React app
+var _footerPatchInterval = setInterval(function() {
+  var root = document.getElementById('root');
+  if (!root || !root.firstChild) return;
+  if (document.getElementById('penned-legal-footer')) {
+    clearInterval(_footerPatchInterval);
+    return;
+  }
+  var footer = document.createElement('footer');
+  footer.id = 'penned-legal-footer';
+  footer.style.cssText = 'border-top:1px solid #e6e8eb;background:#fafaf7;padding:28px 20px;text-align:center;font:13px/1.5 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;color:#5a6172;';
+  footer.innerHTML =
+    '<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:18px;margin-bottom:8px;">' +
+      '<a href="/privacy" style="color:#5a6172;text-decoration:none;">Privacy Policy</a>' +
+      '<a href="/terms" style="color:#5a6172;text-decoration:none;">Terms of Service</a>' +
+      '<a href="/cookies" style="color:#5a6172;text-decoration:none;">Cookie Policy</a>' +
+      '<a href="/disclaimer" style="color:#5a6172;text-decoration:none;">Disclaimer</a>' +
+      '<a href="/contact" style="color:#5a6172;text-decoration:none;">Contact</a>' +
+    '</div>' +
+    '<div>&copy; ' + new Date().getFullYear() + ' Earth Movers Network Inc. · Penned</div>';
+  document.body.appendChild(footer);
+  clearInterval(_footerPatchInterval);
+}, 200);
+setTimeout(function() { clearInterval(_footerPatchInterval); }, 10000);
 </script>
 </body>
 </html>

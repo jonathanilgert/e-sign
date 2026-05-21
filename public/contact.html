@@ -198,6 +198,18 @@
       color: var(--ink-4);
       text-align: center;
     }
+    footer .legal-links {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 14px;
+      margin-bottom: 8px;
+    }
+    footer .legal-links a {
+      color: var(--ink-3);
+      text-decoration: none;
+    }
+    footer .legal-links a:hover { color: var(--ink); }
 
     @media (max-width: 540px) {
       .contact-card { padding: 24px 20px; }
@@ -249,6 +261,12 @@
   </main>
 
   <footer>
+    <div class="legal-links">
+      <a href="/privacy">Privacy Policy</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="/cookies">Cookie Policy</a>
+      <a href="/disclaimer">Disclaimer</a>
+    </div>
     &copy; <span id="footer-year"></span> Penned. All rights reserved.
   </footer>
 

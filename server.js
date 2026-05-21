@@ -2357,6 +2357,20 @@ app.get('/billing', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'billing.html'));
 });
 
+// Legal pages — clean URLs
+app.get('/privacy', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html'));
+});
+app.get('/terms', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'terms-of-service.html'));
+});
+app.get('/cookies', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'cookie-policy.html'));
+});
+app.get('/disclaimer', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'disclaimer.html'));
+});
+
 // Public signing page — no auth required
 app.get('/sign/:id', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'sign.html'));

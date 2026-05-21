@@ -162,6 +162,20 @@
       color: var(--ink-3);
       margin-top: 4px;
     }
+    .auth-legal {
+      max-width: 420px;
+      margin: 24px auto 32px;
+      padding: 0 20px;
+      text-align: center;
+      font-size: 12.5px;
+      color: var(--ink-3);
+    }
+    .auth-legal a {
+      color: var(--ink-3);
+      text-decoration: none;
+      margin: 0 6px;
+    }
+    .auth-legal a:hover { color: var(--ink); text-decoration: underline; }
   </style>
 </head>
 <body style="background:var(--bg)">
@@ -257,6 +271,13 @@
         <a id="show-login-from-reset">Back to sign in</a>
       </div>
     </div>
+  </div>
+
+  <div class="auth-legal">
+    <a href="/privacy">Privacy</a>·
+    <a href="/terms">Terms</a>·
+    <a href="/cookies">Cookies</a>·
+    <a href="/disclaimer">Disclaimer</a>
   </div>
 
   <script>
