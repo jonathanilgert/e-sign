@@ -252,27 +252,32 @@ var _pricePatchInterval = setInterval(function() {
 }, 200);
 setTimeout(function() { clearInterval(_pricePatchInterval); }, 10000);
 
-// Append a legal-links footer below the rendered React app
+// Patch the rendered footer: point Privacy/Terms at real pages and
+// add Cookie Policy + Disclaimer links next to them.
 var _footerPatchInterval = setInterval(function() {
-  var root = document.getElementById('root');
-  if (!root || !root.firstChild) return;
-  if (document.getElementById('penned-legal-footer')) {
-    clearInterval(_footerPatchInterval);
-    return;
+  var links = document.querySelectorAll('.footer-links a, footer a');
+  if (!links.length) return;
+  var privacyLink = null, termsLink = null, container = null;
+  links.forEach(function(a) {
+    var t = (a.textContent || '').trim().toLowerCase();
+    if (t === 'privacy' || t === 'privacy policy') { privacyLink = a; a.href = '/privacy'; }
+    if (t === 'terms' || t === 'terms of service') { termsLink = a; a.href = '/terms'; }
+    if (t === 'contact') { a.href = '/contact'; }
+  });
+  if (!privacyLink && !termsLink) return;
+  container = (privacyLink || termsLink).parentNode;
+  if (container && !container.querySelector('[data-penned-cookies]')) {
+    var ref = privacyLink || termsLink;
+    var mkLink = function(href, text, attr) {
+      var a = document.createElement('a');
+      a.href = href; a.textContent = text; a.setAttribute(attr, '1');
+      return a;
+    };
+    var cookies = mkLink('/cookies', 'Cookies', 'data-penned-cookies');
+    var disclaimer = mkLink('/disclaimer', 'Disclaimer', 'data-penned-disclaimer');
+    container.appendChild(cookies);
+    container.appendChild(disclaimer);
   }
-  var footer = document.createElement('footer');
-  footer.id = 'penned-legal-footer';
-  footer.style.cssText = 'border-top:1px solid #e6e8eb;background:#fafaf7;padding:28px 20px;text-align:center;font:13px/1.5 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;color:#5a6172;';
-  footer.innerHTML =
-    '<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:18px;margin-bottom:8px;">' +
-      '<a href="/privacy" style="color:#5a6172;text-decoration:none;">Privacy Policy</a>' +
-      '<a href="/terms" style="color:#5a6172;text-decoration:none;">Terms of Service</a>' +
-      '<a href="/cookies" style="color:#5a6172;text-decoration:none;">Cookie Policy</a>' +
-      '<a href="/disclaimer" style="color:#5a6172;text-decoration:none;">Disclaimer</a>' +
-      '<a href="/contact" style="color:#5a6172;text-decoration:none;">Contact</a>' +
-    '</div>' +
-    '<div>&copy; ' + new Date().getFullYear() + ' Earth Movers Network Inc. · Penned</div>';
-  document.body.appendChild(footer);
   clearInterval(_footerPatchInterval);
 }, 200);
 setTimeout(function() { clearInterval(_footerPatchInterval); }, 10000);
