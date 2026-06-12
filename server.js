@@ -63,7 +63,14 @@ const config = {
 };
 
 // --------------- Database ---------------
-const db = new Database(path.join(__dirname, 'esign.db'));
+// DB_PATH MUST point at persistent storage in production. On hosts with an
+// ephemeral filesystem (e.g. Render without a mounted disk), the default
+// in-app-dir path is wiped on every deploy/restart, silently deleting every
+// user account — which presents as "no one can sign in". Mount a persistent
+// disk and set DB_PATH to a file on it (e.g. /var/data/esign.db).
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'esign.db');
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 
 db.exec(`
