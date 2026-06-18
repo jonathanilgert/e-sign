@@ -237,6 +237,11 @@
         <input type="password" id="register-password" placeholder="Create a password" autocomplete="new-password">
         <p class="password-hint">Must be at least 8 characters</p>
       </div>
+      <div class="form-group">
+        <label for="register-promo">Promo code <span style="color:#9aa3ad;font-weight:400">(optional)</span></label>
+        <input type="text" id="register-promo" placeholder="Enter a promo code" autocomplete="off" autocapitalize="characters">
+        <p class="password-hint">Have a code? Redeem it for bonus free documents.</p>
+      </div>
       <button class="auth-btn" id="btn-register">Create Account</button>
       <div class="auth-toggle">
         Already have an account? <a id="show-login">Sign in</a>
@@ -396,6 +401,7 @@
       const name = document.getElementById('register-name').value.trim();
       const email = document.getElementById('register-email').value.trim();
       const password = document.getElementById('register-password').value;
+      const promo = document.getElementById('register-promo').value.trim();
 
       if (!name || !email || !password) {
         showError('register-error', 'All fields are required');
@@ -413,7 +419,7 @@
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': await getCsrf() },
-          body: JSON.stringify({ name, email, password })
+          body: JSON.stringify({ name, email, password, promo })
         });
         const data = await res.json();
         if (!res.ok) {

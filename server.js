@@ -29,6 +29,10 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 const STRIPE_PRICE_ID_UNLIMITED = process.env.STRIPE_PRICE_ID_UNLIMITED || '';
 const FREE_DOC_LIMIT = 3;
 const PAY_PER_DOC_PRICE = 199; // cents
+
+// Promo codes redeemable at registration. Value = one-time bonus documents granted
+// (added on top of the monthly free allotment, never expire, do not reset monthly).
+const PROMO_CODES = { FOLLOW5: 5 };
 const DOC_EXPIRY_DAYS = 30;
 const REMINDER_DAYS = [3, 7, 25]; // days after sending to send reminders
 
@@ -155,6 +159,9 @@ try { db.exec(`ALTER TABLE users ADD COLUMN notify_signed INTEGER DEFAULT 1`); }
 try { db.exec(`ALTER TABLE users ADD COLUMN notify_expired INTEGER DEFAULT 1`); } catch (e) { /* exists */ }
 try { db.exec(`ALTER TABLE users ADD COLUMN company_name TEXT`); } catch (e) { /* exists */ }
 try { db.exec(`ALTER TABLE users ADD COLUMN logo_path TEXT`); } catch (e) { /* exists */ }
+// One-time bonus document credits (e.g. from a promo code redeemed at signup)
+try { db.exec(`ALTER TABLE users ADD COLUMN bonus_credits INTEGER DEFAULT 0`); } catch (e) { /* exists */ }
+try { db.exec(`ALTER TABLE users ADD COLUMN promo_code TEXT`); } catch (e) { /* exists */ }
 
 // Document lifecycle columns (migration-safe)
 try { db.exec(`ALTER TABLE documents ADD COLUMN expires_at TEXT`); } catch (e) { /* exists */ }
@@ -934,8 +941,12 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     const name = sanitize(req.body.name || '');
+    const promoInput = (req.body.promo || '').trim().toUpperCase();
     if (!email || !password || !name) {
       return res.status(400).json({ error: 'Email, password, and name are required' });
+    }
+    if (promoInput && !(promoInput in PROMO_CODES)) {
+      return res.status(400).json({ error: 'Invalid promo code' });
     }
     if (name.length > 100) return res.status(400).json({ error: 'Name is too long' });
     const pwErr = validatePassword(password);
@@ -952,7 +963,9 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
 
     const id = uuidv4();
     const password_hash = await bcrypt.hash(password, 12);
-    db.prepare('INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)').run(id, email.toLowerCase(), password_hash, name);
+    const bonusCredits = promoInput ? PROMO_CODES[promoInput] : 0;
+    db.prepare('INSERT INTO users (id, email, password_hash, name, bonus_credits, promo_code) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(id, email.toLowerCase(), password_hash, name, bonusCredits, promoInput || null);
 
     const user = db.prepare('SELECT id, email, name, plan_type, documents_sent_this_month, created_at FROM users WHERE id = ?').get(id);
     const token = generateToken(user);
@@ -1399,15 +1412,22 @@ app.post('/api/generate-doc-pdf', requireAuth, async (req, res) => {
 // Check if user can send a document, and what action is needed
 function checkBillingStatus(userId) {
   resetMonthlyCounters();
-  const user = db.prepare('SELECT plan_type, documents_sent_this_month, monthly_reset_date, stripe_customer_id FROM users WHERE id = ?').get(userId);
+  const user = db.prepare('SELECT plan_type, documents_sent_this_month, monthly_reset_date, stripe_customer_id, bonus_credits FROM users WHERE id = ?').get(userId);
   if (!user) return { allowed: false, reason: 'User not found' };
 
   if (user.plan_type === 'unlimited') {
     return { allowed: true, plan: 'unlimited' };
   }
 
+  const bonusCredits = user.bonus_credits || 0;
+
+  // Monthly free allotment is used first; one-time bonus credits cover the overflow.
   if (user.documents_sent_this_month < FREE_DOC_LIMIT) {
-    return { allowed: true, plan: user.plan_type, used: user.documents_sent_this_month, limit: FREE_DOC_LIMIT, reset_date: user.monthly_reset_date };
+    return { allowed: true, plan: user.plan_type, used: user.documents_sent_this_month, limit: FREE_DOC_LIMIT, bonus_credits: bonusCredits, reset_date: user.monthly_reset_date };
+  }
+
+  if (bonusCredits > 0) {
+    return { allowed: true, plan: user.plan_type, used: user.documents_sent_this_month, limit: FREE_DOC_LIMIT, bonus_credits: bonusCredits, using_bonus: true, reset_date: user.monthly_reset_date };
   }
 
   return {
@@ -1415,6 +1435,7 @@ function checkBillingStatus(userId) {
     plan: user.plan_type,
     used: user.documents_sent_this_month,
     limit: FREE_DOC_LIMIT,
+    bonus_credits: bonusCredits,
     reset_date: user.monthly_reset_date,
     reason: 'limit_reached'
   };
@@ -1607,10 +1628,16 @@ app.post('/api/documents', docSendLimiter, (req, res) => {
     normalizedExtraSigners ? JSON.stringify(normalizedExtraSigners) : null
   );
 
-  // Increment monthly counter
+  // Consume an allowance slot: fill the monthly free allotment first, then draw
+  // down one-time bonus credits (e.g. from a promo code) for the overflow.
   if (userId) {
     resetMonthlyCounters();
-    db.prepare('UPDATE users SET documents_sent_this_month = documents_sent_this_month + 1 WHERE id = ?').run(userId);
+    const u = db.prepare('SELECT plan_type, documents_sent_this_month, bonus_credits FROM users WHERE id = ?').get(userId);
+    if (u && u.plan_type !== 'unlimited' && u.documents_sent_this_month >= FREE_DOC_LIMIT && (u.bonus_credits || 0) > 0) {
+      db.prepare('UPDATE users SET bonus_credits = bonus_credits - 1 WHERE id = ?').run(userId);
+    } else {
+      db.prepare('UPDATE users SET documents_sent_this_month = documents_sent_this_month + 1 WHERE id = ?').run(userId);
+    }
   }
 
   // Include pdf_path so the client can reference the freshly-created file
@@ -1622,13 +1649,14 @@ app.post('/api/documents', docSendLimiter, (req, res) => {
 app.get('/api/stats', requireAuth, (req, res) => {
   try {
     resetMonthlyCounters();
-    const user = db.prepare('SELECT documents_sent_this_month, plan_type FROM users WHERE id = ?').get(req.user.id);
+    const user = db.prepare('SELECT documents_sent_this_month, plan_type, bonus_credits FROM users WHERE id = ?').get(req.user.id);
     const awaiting = db.prepare("SELECT COUNT(*) as count FROM documents WHERE user_id = ? AND status = 'awaiting_recipient'").get(req.user.id);
     const completed = db.prepare("SELECT COUNT(*) as count FROM documents WHERE user_id = ? AND status = 'completed'").get(req.user.id);
     const total = db.prepare("SELECT COUNT(*) as count FROM documents WHERE user_id = ?").get(req.user.id);
     res.json({
       sent_this_month: user ? user.documents_sent_this_month : 0,
       plan_type: user ? user.plan_type : 'free',
+      bonus_credits: user ? (user.bonus_credits || 0) : 0,
       awaiting: awaiting.count,
       completed: completed.count,
       total: total.count
