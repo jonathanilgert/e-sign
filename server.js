@@ -62,8 +62,11 @@ const config = {
       pass: process.env.SMTP_PASS || ''
     }
   },
+  // FROM_EMAIL must be a provider-verified sender domain. CONTACT_EMAIL is the
+  // public Penned address shown in email footers and used as Reply-To.
   fromEmail: process.env.FROM_EMAIL || process.env.SMTP_USER || '',
-  fromName: process.env.FROM_NAME || 'Penned'
+  fromName: process.env.FROM_NAME || 'Penned',
+  contactEmail: process.env.CONTACT_EMAIL || process.env.PUBLIC_CONTACT_EMAIL || 'hello@penned.ca'
 };
 
 // --------------- Database ---------------
@@ -592,6 +595,7 @@ async function sendEmail(to, subject, html, attachments = []) {
       subject,
       html
     };
+    if (config.contactEmail) emailData.reply_to = config.contactEmail;
     if (attachments.length > 0) {
       emailData.attachments = attachments.map(a => ({
         filename: a.filename,
@@ -615,6 +619,7 @@ async function sendEmail(to, subject, html, attachments = []) {
     to,
     subject,
     html,
+    replyTo: config.contactEmail || undefined,
     attachments
   });
   console.log(`[EMAIL SENT via SMTP] To: ${to} | Subject: ${subject}`);
@@ -650,7 +655,7 @@ ${content}
 <!-- Footer -->
 <tr><td style="padding:22px 8px 0">
   <p style="margin:0;font-size:12px;color:#6b7480;line-height:1.6;font-family:${fontStack}">
-    Sent by Penned${config.fromEmail ? ' &middot; ' + config.fromEmail : ''}
+    Sent by Penned${config.contactEmail ? ' &middot; ' + config.contactEmail : ''}
   </p>
   ${options.hideUnsubscribe ? '' : `<p style="margin:6px 0 0;font-size:12px;color:#6b7480;font-family:${fontStack}">
     <a href="${settingsUrl}" style="color:#16708a;text-decoration:underline">Email preferences</a>
