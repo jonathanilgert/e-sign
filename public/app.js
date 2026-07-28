@@ -142,7 +142,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-back-dashboard').addEventListener('click', () => showView('dashboard'));
 
   // Document creation flow
-  loadLibrary();
+  // Curated public templates are temporarily disabled in the UI. Keep the
+  // library code archived below for easy re-enable later, but do not load or
+  // wire it while the "Use Template" source is removed.
   setupSourceToggle();
   setupDocEditor();
   setupFieldPlacement();
@@ -610,16 +612,19 @@ function setupSourceToggle() {
   const btnUpload = document.getElementById('btn-upload');
   const btnSaved = document.getElementById('btn-saved');
   const btnWrite = document.getElementById('btn-write');
-  const sections = ['template-section', 'upload-section', 'saved-section', 'write-section'];
+  const sections = ['upload-section', 'saved-section', 'write-section'];
 
   function activate(activeBtn, showSection) {
-    [btnTemplate, btnUpload, btnSaved, btnWrite].forEach(b => b.classList.remove('active'));
+    [btnTemplate, btnUpload, btnSaved, btnWrite].filter(Boolean).forEach(b => b.classList.remove('active'));
     activeBtn.classList.add('active');
-    sections.forEach(s => document.getElementById(s).style.display = 'none');
+    sections.forEach(s => {
+      const section = document.getElementById(s);
+      if (section) section.style.display = 'none';
+    });
     document.getElementById(showSection).style.display = '';
   }
 
-  btnTemplate.addEventListener('click', () => activate(btnTemplate, 'template-section'));
+  if (btnTemplate) btnTemplate.addEventListener('click', () => activate(btnTemplate, 'template-section'));
   btnUpload.addEventListener('click', () => activate(btnUpload, 'upload-section'));
   btnSaved.addEventListener('click', () => {
     activate(btnSaved, 'saved-section');
@@ -916,7 +921,8 @@ async function prepareDocument() {
   const recipientEmail = document.getElementById('recipient-email').value.trim();
 
   const isSaved = document.getElementById('btn-saved').classList.contains('active');
-  const isTemplate = document.getElementById('btn-template').classList.contains('active');
+  const templateBtn = document.getElementById('btn-template');
+  const isTemplate = !!(templateBtn && templateBtn.classList.contains('active'));
   const isWrite = document.getElementById('btn-write').classList.contains('active');
 
   if (!title || !senderName || !senderEmail) {
@@ -1272,8 +1278,9 @@ function renderFieldMarkers() {
       input.addEventListener('input', () => {
         state.senderFieldValues[field.id] = input.value;
       });
-      // Don't start a marker drag when the user clicks into the input
-      input.addEventListener('mousedown', (e) => e.stopPropagation());
+      // A simple click still focuses the sender's inline input for typing, but
+      // click-and-hold/drag bubbles to setupDrag so the whole green box can be
+      // repositioned like recipient fields instead of requiring the tiny handle.
       marker.appendChild(input);
     } else if (isSenderSigField) {
       const placeholder = document.createElement('div');
@@ -1333,11 +1340,12 @@ function setupDrag(marker, field, container) {
 
   marker.addEventListener('mousedown', (e) => {
     if (e.target.classList.contains('remove-field')) return;
-    // Don't drag when the user is typing into an inline input or clicking a signature
-    // placeholder — those events need to pass through to focus / click the inner element.
-    if (e.target.classList.contains('marker-input')) return;
+    // Sender inline inputs still need normal click-to-focus behavior, but they
+    // should also drag when the user click-holds and moves. Let input events
+    // start this drag listener, delaying preventDefault unless a drag begins.
+    const startedOnInput = e.target.classList.contains('marker-input');
     if (e.target.classList.contains('sig-placeholder')) return;
-    e.preventDefault();
+    if (!startedOnInput) e.preventDefault();
     hasMoved = false;
     startX = e.clientX;
     startY = e.clientY;
@@ -1353,7 +1361,13 @@ function setupDrag(marker, field, container) {
     function onMove(ev) {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved = true;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        hasMoved = true;
+        if (startedOnInput) {
+          ev.preventDefault();
+          e.target.blur();
+        }
+      }
 
       const newDisplayX = startDisplayX + (dx / rect.width * 100);
       const newDisplayY = startDisplayY + (dy / rect.height * 100);

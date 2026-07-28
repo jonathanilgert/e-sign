@@ -13,7 +13,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Penned</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/style.css?v=15">
+  <link rel="stylesheet" href="/style.css?v=16">
 </head>
 <body>
   <!-- Top nav -->
@@ -110,7 +110,6 @@
           <label>Document Source</label>
           <div class="source-toggle">
             <button class="btn btn-sm active" id="btn-upload">Upload PDF</button>
-            <button class="btn btn-sm" id="btn-template">Use Template</button>
             <button class="btn btn-sm" id="btn-saved">Saved Template</button>
             <button class="btn btn-sm" id="btn-write">Write from Scratch</button>
           </div>
@@ -123,18 +122,6 @@
           </div>
         </div>
 
-        <div id="template-section" style="display:none">
-          <div class="library-layout">
-            <aside class="library-sidebar" id="library-sidebar">
-              <div class="library-empty">Loading library…</div>
-            </aside>
-            <div class="library-detail" id="library-detail">
-              <div class="library-detail-empty">
-                <p class="hint" style="margin:0">Select a template from the library on the left to use it as the starting point for your document.</p>
-              </div>
-            </div>
-          </div>
-        </div>
 
         <div id="write-section" style="display:none">
           <div class="doc-editor-wrap">
@@ -346,6 +333,6 @@
     if (__y) __y.textContent = new Date().getFullYear();
   </script>
 
-  <script src="/app.js?v=15"></script>
+  <script src="/app.js?v=16"></script>
 </body>
 </html>
