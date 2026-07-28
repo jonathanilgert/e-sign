@@ -1241,17 +1241,6 @@ function renderFieldMarkers() {
     removeBtn.innerHTML = '&times;';
     marker.appendChild(removeBtn);
 
-    // For markers whose interior is occupied by an input or signature placeholder,
-    // expose an explicit drag handle so the field can still be repositioned after
-    // values have been typed in.
-    if (isEditableForSender || isSenderSigField) {
-      const moveHandle = document.createElement('span');
-      moveHandle.className = 'move-handle';
-      moveHandle.title = 'Drag to move this field';
-      moveHandle.innerHTML = '&#10303;'; // ⠿ braille pattern dots-12345678 (looks like a grip)
-      marker.appendChild(moveHandle);
-    }
-
     if (isEditableForSender) {
       // Use a textarea for free-form text/name fields so long content wraps to multiple
        // lines as the user types (matching the server's word-wrap when the PDF renders).
