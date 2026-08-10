@@ -8,6 +8,8 @@ const {
   normalizedFieldBox,
   imageFitDimensions,
 } = require('../lib/pdf-signing');
+const { PDFDocument, StandardFonts } = require('pdf-lib');
+const { drawFieldText, normalizePdfText } = require('../lib/pdf-text');
 
 test('getPdfPageSizes reads encrypted library PDFs for signing overlays', async () => {
   const encryptedPaths = [
@@ -30,6 +32,20 @@ test('normalizedFieldBox supplies safe dimensions when client fields omit width 
   assert.equal(field.height, 50);
   assert.equal(field.x, 12);
   assert.equal(field.y, 34);
+});
+
+test('drawFieldText sanitizes pasted newlines and unsupported glyphs instead of throwing WinAnsi errors', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([300, 160]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+
+  const unsafe = 'Unit 1\nSecond line 😄';
+  assert.equal(normalizePdfText(unsafe, font), 'Unit 1 Second line ?');
+  assert.doesNotThrow(() => {
+    drawFieldText(page, font, unsafe, { x: 20, y: 80, width: 220, height: 40, fontSize: 11 });
+  });
+  const bytes = await doc.save();
+  assert.ok(bytes.length > 0);
 });
 
 test('imageFitDimensions never returns NaN for malformed signature field dimensions', () => {

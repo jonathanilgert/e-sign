@@ -12,6 +12,7 @@ const { Resend } = require('resend');
 const nodemailer = require('nodemailer');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { getPdfPageSizes, normalizedFieldBox, imageFitDimensions } = require('./lib/pdf-signing');
+const { drawFieldText } = require('./lib/pdf-text');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
@@ -815,80 +816,6 @@ const emailTemplates = {
 };
 
 // --------------- Helpers ---------------
-
-// Draw text within field bounds: tries single line first, wraps if needed, shrinks as last resort
-function drawFieldText(page, font, text, field) {
-  const maxSize = field.fontSize || 11;
-  const padding = 3;
-  const fieldW = field.width - padding * 2;
-  const fieldH = field.height || 18;
-  const lineSpacing = 1.25;
-
-  // Try single line at full size first
-  let size = maxSize;
-  let textWidth = font.widthOfTextAtSize(text, size);
-  if (textWidth <= fieldW) {
-    // Fits on one line - draw left-aligned from field left edge
-    page.drawText(text, {
-      x: field.x + padding, y: field.y + 4,
-      size, font, color: rgb(0, 0, 0.4)
-    });
-    return;
-  }
-
-  // Wrap text into multiple lines
-  const words = text.split(/\s+/);
-  let lines = [];
-  let currentLine = '';
-
-  for (const word of words) {
-    const testLine = currentLine ? currentLine + ' ' + word : word;
-    if (font.widthOfTextAtSize(testLine, size) <= fieldW) {
-      currentLine = testLine;
-    } else {
-      if (currentLine) lines.push(currentLine);
-      // If a single word is too wide, shrink font for it
-      if (font.widthOfTextAtSize(word, size) > fieldW) {
-        let wordSize = size;
-        while (wordSize > 6 && font.widthOfTextAtSize(word, wordSize) > fieldW) {
-          wordSize -= 0.5;
-        }
-        size = wordSize; // Use smaller size for all remaining text
-      }
-      currentLine = word;
-    }
-  }
-  if (currentLine) lines.push(currentLine);
-
-  // Check if wrapped lines fit vertically; if not, shrink font
-  while (lines.length * size * lineSpacing > fieldH && size > 6) {
-    size -= 0.5;
-    // Re-wrap at smaller size
-    lines = [];
-    currentLine = '';
-    for (const word of words) {
-      const testLine = currentLine ? currentLine + ' ' + word : word;
-      if (font.widthOfTextAtSize(testLine, size) <= fieldW) {
-        currentLine = testLine;
-      } else {
-        if (currentLine) lines.push(currentLine);
-        currentLine = word;
-      }
-    }
-    if (currentLine) lines.push(currentLine);
-  }
-
-  // Draw each line, starting from top of field (highest y in PDF coords)
-  const startY = field.y + fieldH - size - 2;
-  for (let i = 0; i < lines.length; i++) {
-    const lineY = startY - (i * size * lineSpacing);
-    if (lineY < field.y - 2) break; // Don't draw below field bounds
-    page.drawText(lines[i], {
-      x: field.x + padding, y: lineY,
-      size, font, color: rgb(0, 0, 0.4)
-    });
-  }
-}
 
 // --------------- Auth Helpers ---------------
 
