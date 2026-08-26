@@ -1057,7 +1057,13 @@ async function prepareDocument() {
   // Refresh role select + legend in case the user added/removed signers since last visit.
   rebuildFieldRoleSelect();
 
-  renderPage(state.currentPage);
+  await renderPage(state.currentPage);
+  const pdfContainer = document.getElementById('pdf-container');
+  if (pdfContainer) {
+    requestAnimationFrame(() => {
+      pdfContainer.scrollIntoView({ behavior: 'auto', block: 'start', inline: 'nearest' });
+    });
+  }
   if (state.fields.length > 0) updateFieldSummary();
 }
 
@@ -1207,7 +1213,7 @@ function placeFieldAtPoint(clientX, clientY, container, canvas, startDrag) {
   const fieldH = type === 'signature' ? 50
                : mobileDefaults ? (type === 'initials' || type === 'date' ? 28 : 34)
                : (type === 'initials' ? 18 : 20);
-  const fieldFontSize = mobileDefaults && type !== 'signature' ? 12 : 11;
+  const fieldFontSize = mobileDefaults && type !== 'signature' ? 10 : 11;
 
   const clickX = clientX - rect.left;
   const clickY = clientY - rect.top;
