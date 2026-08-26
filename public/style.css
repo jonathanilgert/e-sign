@@ -1434,8 +1434,8 @@ input:focus, select:focus, textarea:focus {
 
   .field-marker.editable .marker-input {
     padding: 1px 3px;
-    font-size: 9.5px;
-    line-height: 1.12;
+    font-size: 8px;
+    line-height: 1.08;
     font-weight: 400;
     color: #111;
     background: rgba(255, 255, 255, 0.86);
