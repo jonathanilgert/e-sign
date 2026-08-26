@@ -1088,101 +1088,186 @@ let isDragging = false;
 const POINTER_DOWN = window.PointerEvent ? 'pointerdown' : 'mousedown';
 const POINTER_MOVE = window.PointerEvent ? 'pointermove' : 'mousemove';
 const POINTER_UP = window.PointerEvent ? 'pointerup' : 'mouseup';
+const MOBILE_PLACEMENT_QUERY = '(max-width: 640px)';
+let recentMultiTouchUntil = 0;
+
+function isMobilePlacementEvent(e) {
+  return e.pointerType === 'touch' || window.matchMedia(MOBILE_PLACEMENT_QUERY).matches;
+}
 
 function setupFieldPlacement() {
   const container = document.getElementById('pdf-container');
+
+  // On mobile, a pinch gesture sends multiple touch/pointer events. Remember that
+  // briefly so neither finger is misread as an intentional field placement tap.
+  container.addEventListener('touchstart', (e) => {
+    if (e.touches && e.touches.length > 1) {
+      recentMultiTouchUntil = Date.now() + 900;
+    }
+  }, { passive: true });
 
   container.addEventListener(POINTER_DOWN, (e) => {
     if (e.target.closest('.field-marker')) return;
 
     const canvas = container.querySelector('canvas');
     if (!canvas) return;
+
+    if (isMobilePlacementEvent(e)) {
+      beginMobileFieldPlacementTap(e, container, canvas);
+      return;
+    }
+
+    // Desktop keeps the existing click/hold-to-place-and-drag behavior.
     e.preventDefault();
+    placeFieldAtPoint(e.clientX, e.clientY, container, canvas, true);
+  });
+}
+
+function beginMobileFieldPlacementTap(e, container, canvas) {
+  // Non-primary touch is part of a pinch/zoom. Do not place a field.
+  if (e.pointerType === 'touch' && e.isPrimary === false) {
+    recentMultiTouchUntil = Date.now() + 900;
+    return;
+  }
+
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const startAt = Date.now();
+  let cancelled = false;
+
+  function cleanup() {
+    document.removeEventListener(POINTER_MOVE, onMove);
+    document.removeEventListener(POINTER_UP, onUp);
+    document.removeEventListener('pointercancel', onCancel);
+  }
+
+  function onMove(ev) {
+    if (e.pointerId !== undefined && ev.pointerId !== undefined && ev.pointerId !== e.pointerId) {
+      recentMultiTouchUntil = Date.now() + 900;
+      cancelled = true;
+      return;
+    }
+    const dx = Math.abs(ev.clientX - startX);
+    const dy = Math.abs(ev.clientY - startY);
+    // Treat finger movement as scroll/zoom intent, not placement intent.
+    if (dx > 8 || dy > 8) cancelled = true;
+  }
+
+  function onCancel() {
+    cancelled = true;
+    cleanup();
+  }
+
+  function onUp(ev) {
+    cleanup();
+    if (e.pointerId !== undefined && ev.pointerId !== undefined && ev.pointerId !== e.pointerId) return;
+    if (cancelled) return;
+    if (Date.now() < recentMultiTouchUntil) return;
+    // Ignore long presses; they are usually attempts to scroll/select/zoom on phones.
+    if (Date.now() - startAt > 450) return;
 
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+    const tapX = ev.clientX - rect.left;
+    const tapY = ev.clientY - rect.top;
+    if (tapX < 0 || tapY < 0 || tapX > rect.width || tapY > rect.height) return;
 
-    const roleRaw = document.getElementById('field-role').value;
-    // roleRaw is either "sender" or "recipient:N" (N = signer_index, 0 for primary).
-    let role, signerIdx;
-    if (roleRaw.startsWith('recipient')) {
-      role = 'recipient';
-      const colonIdx = roleRaw.indexOf(':');
-      signerIdx = colonIdx >= 0 ? parseInt(roleRaw.slice(colonIdx + 1), 10) || 0 : 0;
-    } else {
-      role = 'sender';
-      signerIdx = null;
-    }
-    const type = document.getElementById('field-type').value;
-    const customLabel = document.getElementById('field-label').value.trim();
+    placeFieldAtPoint(ev.clientX, ev.clientY, container, canvas, false);
+  }
 
-    const typeLabels = { text: 'Text', name: 'Full Name', date: 'Date', initials: 'Initials', signature: 'Signature' };
-    const label = customLabel || typeLabels[type];
+  document.addEventListener(POINTER_MOVE, onMove);
+  document.addEventListener(POINTER_UP, onUp);
+  document.addEventListener('pointercancel', onCancel);
+}
 
-    // Default field widths: roomy enough for typical content, then resize as needed.
-    const fieldW = type === 'signature' ? 240 : (type === 'initials' ? 100 : 240);
-    const fieldH = type === 'signature' ? 50 : (type === 'initials' ? 18 : 20);
+function placeFieldAtPoint(clientX, clientY, container, canvas, startDrag) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
 
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
+  const roleRaw = document.getElementById('field-role').value;
+  // roleRaw is either "sender" or "recipient:N" (N = signer_index, 0 for primary).
+  let role, signerIdx;
+  if (roleRaw.startsWith('recipient')) {
+    role = 'recipient';
+    const colonIdx = roleRaw.indexOf(':');
+    signerIdx = colonIdx >= 0 ? parseInt(roleRaw.slice(colonIdx + 1), 10) || 0 : 0;
+  } else {
+    role = 'sender';
+    signerIdx = null;
+  }
+  const type = document.getElementById('field-type').value;
+  const customLabel = document.getElementById('field-label').value.trim();
 
-    const field = {
-      id: 'field_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-      role,
-      type,
-      label,
-      page: state.currentPage - 1,
-      x: (clickX * scaleX / state.scale) - fieldW / 2,
-      y: ((canvas.height - clickY * scaleY) / state.scale) - fieldH / 2,
-      width: fieldW,
-      height: fieldH,
-      fontSize: 11,
-      displayX: clickX / rect.width * 100,
-      displayY: clickY / rect.height * 100
-    };
-    // Only attach signer_index for recipient fields. Sender fields stay plain.
-    if (role === 'recipient') field.signer_index = signerIdx || 0;
+  const typeLabels = { text: 'Text', name: 'Full Name', date: 'Date', initials: 'Initials', signature: 'Signature' };
+  const label = customLabel || typeLabels[type];
 
-    state.fields.push(field);
-    document.getElementById('field-label').value = '';
-    renderFieldMarkers();
-    updateFieldSummary();
+  // Default field widths: roomy enough for typical content, then resize as needed.
+  const fieldW = type === 'signature' ? 240 : (type === 'initials' ? 100 : 240);
+  const fieldH = type === 'signature' ? 50 : (type === 'initials' ? 18 : 20);
 
-    const marker = [...container.querySelectorAll('.field-marker')].find(m => {
-      const removeBtn = m.querySelector('.remove-field');
-      return removeBtn && removeBtn.dataset.id === field.id;
-    });
-    if (marker) marker.classList.add('dragging');
+  const clickX = clientX - rect.left;
+  const clickY = clientY - rect.top;
 
-    const cursor = document.getElementById('target-cursor');
-    cursor.style.display = 'none';
+  const field = {
+    id: 'field_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+    role,
+    type,
+    label,
+    page: state.currentPage - 1,
+    x: (clickX * scaleX / state.scale) - fieldW / 2,
+    y: ((canvas.height - clickY * scaleY) / state.scale) - fieldH / 2,
+    width: fieldW,
+    height: fieldH,
+    fontSize: 11,
+    displayX: clickX / rect.width * 100,
+    displayY: clickY / rect.height * 100
+  };
+  // Only attach signer_index for recipient fields. Sender fields stay plain.
+  if (role === 'recipient') field.signer_index = signerIdx || 0;
 
-    function onMove(ev) {
-      field.displayX = Math.max(0, Math.min(100, (e.clientX - rect.left + (ev.clientX - e.clientX)) / rect.width * 100));
-      field.displayY = Math.max(0, Math.min(100, (e.clientY - rect.top + (ev.clientY - e.clientY)) / rect.height * 100));
+  state.fields.push(field);
+  document.getElementById('field-label').value = '';
+  renderFieldMarkers();
+  updateFieldSummary();
 
-      if (marker) {
-        marker.style.left = field.displayX + '%';
-        marker.style.top = field.displayY + '%';
-      }
-
-      const pdfClickX = (field.displayX / 100) * rect.width;
-      const pdfClickY = (field.displayY / 100) * rect.height;
-      field.x = (pdfClickX * scaleX / state.scale) - field.width / 2;
-      field.y = ((canvas.height - pdfClickY * scaleY) / state.scale) - field.height / 2;
-    }
-
-    function onUp() {
-      if (marker) marker.classList.remove('dragging');
-      document.removeEventListener(POINTER_MOVE, onMove);
-      document.removeEventListener(POINTER_UP, onUp);
-      cursor.style.display = 'block';
-    }
-
-    document.addEventListener(POINTER_MOVE, onMove);
-    document.addEventListener(POINTER_UP, onUp);
+  const marker = [...container.querySelectorAll('.field-marker')].find(m => {
+    const removeBtn = m.querySelector('.remove-field');
+    return removeBtn && removeBtn.dataset.id === field.id;
   });
+  if (marker && startDrag) marker.classList.add('dragging');
+
+  const cursor = document.getElementById('target-cursor');
+  cursor.style.display = 'none';
+
+  if (!startDrag) {
+    cursor.style.display = 'block';
+    return;
+  }
+
+  function onMove(ev) {
+    field.displayX = Math.max(0, Math.min(100, (clientX - rect.left + (ev.clientX - clientX)) / rect.width * 100));
+    field.displayY = Math.max(0, Math.min(100, (clientY - rect.top + (ev.clientY - clientY)) / rect.height * 100));
+
+    if (marker) {
+      marker.style.left = field.displayX + '%';
+      marker.style.top = field.displayY + '%';
+    }
+
+    const pdfClickX = (field.displayX / 100) * rect.width;
+    const pdfClickY = (field.displayY / 100) * rect.height;
+    field.x = (pdfClickX * scaleX / state.scale) - field.width / 2;
+    field.y = ((canvas.height - pdfClickY * scaleY) / state.scale) - field.height / 2;
+  }
+
+  function onUp() {
+    if (marker) marker.classList.remove('dragging');
+    document.removeEventListener(POINTER_MOVE, onMove);
+    document.removeEventListener(POINTER_UP, onUp);
+    cursor.style.display = 'block';
+  }
+
+  document.addEventListener(POINTER_MOVE, onMove);
+  document.addEventListener(POINTER_UP, onUp);
 }
 
 function renderFieldMarkers() {
@@ -1337,18 +1422,43 @@ function setupDrag(marker, field, container) {
     // start this drag listener, delaying preventDefault unless a drag begins.
     const startedOnInput = e.target.classList.contains('marker-input');
     if (e.target.classList.contains('sig-placeholder')) return;
-    if (!startedOnInput) e.preventDefault();
+
+    const isMobileTouch = isMobilePlacementEvent(e);
+    if (!startedOnInput && !isMobileTouch) e.preventDefault();
     hasMoved = false;
     startX = e.clientX;
     startY = e.clientY;
     startDisplayX = field.displayX;
     startDisplayY = field.displayY;
-    marker.classList.add('dragging');
 
     const canvas = container.querySelector('canvas');
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
+    let dragReady = !isMobileTouch;
+    let cancelled = false;
+    let longPressTimer = null;
+
+    if (dragReady) {
+      marker.classList.add('dragging');
+    } else {
+      // On phones, touching a marker should still allow normal page scroll/pinch.
+      // Only turn that touch into a marker drag after a deliberate short hold.
+      longPressTimer = window.setTimeout(() => {
+        if (!cancelled) {
+          dragReady = true;
+          marker.classList.add('dragging');
+        }
+      }, 320);
+    }
+
+    function cleanup() {
+      if (longPressTimer) window.clearTimeout(longPressTimer);
+      marker.classList.remove('dragging');
+      document.removeEventListener(POINTER_MOVE, onMove);
+      document.removeEventListener(POINTER_UP, onUp);
+      document.removeEventListener('pointercancel', onCancel);
+    }
 
     function onMove(ev) {
       const dx = ev.clientX - startX;
@@ -1360,6 +1470,16 @@ function setupDrag(marker, field, container) {
           e.target.blur();
         }
       }
+
+      if (isMobileTouch && !dragReady) {
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+          cancelled = true;
+          cleanup();
+        }
+        return;
+      }
+
+      if (dragReady) ev.preventDefault();
 
       const newDisplayX = startDisplayX + (dx / rect.width * 100);
       const newDisplayY = startDisplayY + (dy / rect.height * 100);
@@ -1376,16 +1496,20 @@ function setupDrag(marker, field, container) {
     }
 
     function onUp() {
-      marker.classList.remove('dragging');
-      document.removeEventListener(POINTER_MOVE, onMove);
-      document.removeEventListener(POINTER_UP, onUp);
-      if (hasMoved) {
+      if (hasMoved && dragReady) {
         isDragging = true;
       }
+      cleanup();
+    }
+
+    function onCancel() {
+      cancelled = true;
+      cleanup();
     }
 
     document.addEventListener(POINTER_MOVE, onMove);
     document.addEventListener(POINTER_UP, onUp);
+    document.addEventListener('pointercancel', onCancel);
   });
 }
 

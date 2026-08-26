@@ -812,6 +812,22 @@ input:focus, select:focus, textarea:focus {
   touch-action: none;
 }
 
+@media (max-width: 640px) {
+  #pdf-container canvas {
+    cursor: default;
+    touch-action: pan-y pinch-zoom;
+  }
+
+  .field-marker {
+    touch-action: pan-y pinch-zoom;
+  }
+
+  .field-marker .remove-field,
+  .resize-handle {
+    touch-action: none;
+  }
+}
+
 .sig-pad-container canvas {
   cursor: crosshair !important;
 }
