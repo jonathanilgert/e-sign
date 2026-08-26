@@ -815,11 +815,11 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 640px) {
   #pdf-container canvas {
     cursor: default;
-    touch-action: pan-y pinch-zoom;
+    touch-action: pan-x pan-y pinch-zoom;
   }
 
   .field-marker {
-    touch-action: pan-y pinch-zoom;
+    touch-action: pan-x pan-y pinch-zoom;
   }
 
   .field-marker .remove-field,
@@ -1418,6 +1418,32 @@ input:focus, select:focus, textarea:focus {
   line-height: 1.3;
   white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+@media (max-width: 640px) {
+  .field-marker.sender.editable {
+    border-width: 1px;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.72);
+    min-height: 28px;
+  }
+
+  .field-marker.sender.editable .field-marker-label {
+    display: none;
+  }
+
+  .field-marker.editable .marker-input {
+    padding: 2px 4px;
+    font-size: 16px;
+    line-height: 1.25;
+    font-weight: 500;
+    color: #111;
+    background: rgba(255, 255, 255, 0.86);
+  }
+
+  .field-marker.editable .marker-input-multiline {
+    line-height: 1.25;
+  }
 }
 .field-marker.editable .remove-field,
 .field-marker.sig-field .remove-field {

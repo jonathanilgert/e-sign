@@ -1202,8 +1202,12 @@ function placeFieldAtPoint(clientX, clientY, container, canvas, startDrag) {
   const label = customLabel || typeLabels[type];
 
   // Default field widths: roomy enough for typical content, then resize as needed.
+  const mobileDefaults = window.matchMedia(MOBILE_PLACEMENT_QUERY).matches;
   const fieldW = type === 'signature' ? 240 : (type === 'initials' ? 100 : 240);
-  const fieldH = type === 'signature' ? 50 : (type === 'initials' ? 18 : 20);
+  const fieldH = type === 'signature' ? 50
+               : mobileDefaults ? (type === 'initials' || type === 'date' ? 28 : 34)
+               : (type === 'initials' ? 18 : 20);
+  const fieldFontSize = mobileDefaults && type !== 'signature' ? 16 : 11;
 
   const clickX = clientX - rect.left;
   const clickY = clientY - rect.top;
@@ -1218,7 +1222,7 @@ function placeFieldAtPoint(clientX, clientY, container, canvas, startDrag) {
     y: ((canvas.height - clickY * scaleY) / state.scale) - fieldH / 2,
     width: fieldW,
     height: fieldH,
-    fontSize: 11,
+    fontSize: fieldFontSize,
     displayX: clickX / rect.width * 100,
     displayY: clickY / rect.height * 100
   };
