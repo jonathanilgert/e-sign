@@ -587,14 +587,39 @@ function getTransporter() {
   return nodemailer.createTransport(config.smtp);
 }
 
+function htmlToPlainText(html = '') {
+  return String(html)
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/h[1-6]>/gi, '\n\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, '$2: $1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 async function sendEmail(to, subject, html, attachments = []) {
+  const text = htmlToPlainText(html);
+
   // Use Resend if configured (works over HTTPS, no SMTP port needed)
   if (resend) {
     const emailData = {
       from: `${config.fromName} <${config.fromEmail}>`,
       to,
       subject,
-      html
+      html,
+      text
     };
     if (config.contactEmail) emailData.reply_to = config.contactEmail;
     if (attachments.length > 0) {
@@ -620,6 +645,7 @@ async function sendEmail(to, subject, html, attachments = []) {
     to,
     subject,
     html,
+    text,
     replyTo: config.contactEmail || undefined,
     attachments
   });
