@@ -1213,7 +1213,7 @@ function placeFieldAtPoint(clientX, clientY, container, canvas, startDrag) {
   const fieldH = type === 'signature' ? 50
                : mobileDefaults ? (type === 'initials' || type === 'date' ? 28 : 34)
                : (type === 'initials' ? 18 : 20);
-  const fieldFontSize = mobileDefaults && type !== 'signature' ? 10 : 11;
+  const fieldFontSize = mobileDefaults && type !== 'signature' ? 9 : 11;
 
   const clickX = clientX - rect.left;
   const clickY = clientY - rect.top;
@@ -1572,6 +1572,7 @@ function removeLastField() {
 
 function updateFieldSummary() {
   const summary = document.getElementById('field-summary');
+  if (!summary) return;
   if (state.fields.length === 0) {
     summary.innerHTML = '<p class="hint">No fields placed yet. Click on the PDF to add fields.</p>';
     return;
