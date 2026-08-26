@@ -809,6 +809,7 @@ input:focus, select:focus, textarea:focus {
   display: block;
   width: 100%;
   cursor: crosshair;
+  touch-action: none;
 }
 
 .sig-pad-container canvas {
@@ -837,6 +838,7 @@ input:focus, select:focus, textarea:focus {
   z-index: 10;
   transform: translate(-50%, -50%);
   user-select: none;
+  touch-action: none;
   overflow: visible;
 }
 
@@ -859,6 +861,7 @@ input:focus, select:focus, textarea:focus {
   background: linear-gradient(135deg, transparent 50%, currentColor 50%);
   opacity: 0.4;
   border-radius: 0 0 2px 0;
+  touch-action: none;
 }
 
 .resize-handle:hover { opacity: 0.8; }
@@ -1300,8 +1303,57 @@ input:focus, select:focus, textarea:focus {
   opacity: 0.55;
   border-radius: 0 0 4px 0;
   z-index: 11;
+  touch-action: none;
 }
 .inline-resize-handle:hover { opacity: 0.95; }
+
+/* Mobile signing fallback: keep the PDF readable and collect values in clean,
+   normal-sized cards instead of tiny absolute-positioned PDF text boxes. */
+.mobile-field-list {
+  display: grid;
+  gap: 12px;
+}
+.mobile-field-card {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+}
+.mobile-field-card label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+.mobile-field-card .page-ref {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 500;
+}
+.mobile-field-card input,
+.mobile-field-card textarea {
+  font-size: 16px;
+}
+.mobile-field-card textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+.mobile-pin-overlay .inline-field-label { display: none; }
+.mobile-field-pin {
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid var(--accent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--accent-tint) 85%, var(--paper));
+  color: var(--accent-deep);
+  box-shadow: 0 1px 4px rgba(20, 30, 40, 0.12);
+  font: 700 12px/1 inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
 
 /* --- Inline-editable field markers (sender's own fields, single-pass flow) --- */
 .field-marker.editable {
@@ -1335,6 +1387,7 @@ input:focus, select:focus, textarea:focus {
   border-radius: 2px;
   outline: none;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .field-marker.editable .marker-input:focus {
   background: var(--paper);

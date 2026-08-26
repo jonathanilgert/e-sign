@@ -1085,11 +1085,14 @@ async function renderPage(num) {
 
 // --------------- Field Placement ---------------
 let isDragging = false;
+const POINTER_DOWN = window.PointerEvent ? 'pointerdown' : 'mousedown';
+const POINTER_MOVE = window.PointerEvent ? 'pointermove' : 'mousemove';
+const POINTER_UP = window.PointerEvent ? 'pointerup' : 'mouseup';
 
 function setupFieldPlacement() {
   const container = document.getElementById('pdf-container');
 
-  container.addEventListener('mousedown', (e) => {
+  container.addEventListener(POINTER_DOWN, (e) => {
     if (e.target.closest('.field-marker')) return;
 
     const canvas = container.querySelector('canvas');
@@ -1172,13 +1175,13 @@ function setupFieldPlacement() {
 
     function onUp() {
       if (marker) marker.classList.remove('dragging');
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener(POINTER_MOVE, onMove);
+      document.removeEventListener(POINTER_UP, onUp);
       cursor.style.display = 'block';
     }
 
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    document.addEventListener(POINTER_MOVE, onMove);
+    document.addEventListener(POINTER_UP, onUp);
   });
 }
 
@@ -1281,7 +1284,7 @@ function renderFieldMarkers() {
       } else {
         placeholder.textContent = 'Click to sign';
       }
-      placeholder.addEventListener('mousedown', (e) => e.stopPropagation());
+      placeholder.addEventListener(POINTER_DOWN, (e) => e.stopPropagation());
       placeholder.addEventListener('click', (e) => {
         e.stopPropagation();
         openSenderSignaturePad();
@@ -1327,7 +1330,7 @@ function renderFieldMarkers() {
 function setupDrag(marker, field, container) {
   let startX, startY, startDisplayX, startDisplayY, hasMoved;
 
-  marker.addEventListener('mousedown', (e) => {
+  marker.addEventListener(POINTER_DOWN, (e) => {
     if (e.target.classList.contains('remove-field')) return;
     // Sender inline inputs still need normal click-to-focus behavior, but they
     // should also drag when the user click-holds and moves. Let input events
@@ -1374,20 +1377,20 @@ function setupDrag(marker, field, container) {
 
     function onUp() {
       marker.classList.remove('dragging');
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener(POINTER_MOVE, onMove);
+      document.removeEventListener(POINTER_UP, onUp);
       if (hasMoved) {
         isDragging = true;
       }
     }
 
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    document.addEventListener(POINTER_MOVE, onMove);
+    document.addEventListener(POINTER_UP, onUp);
   });
 }
 
 function setupResize(handle, marker, field, container) {
-  handle.addEventListener('mousedown', (e) => {
+  handle.addEventListener(POINTER_DOWN, (e) => {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
@@ -1413,13 +1416,13 @@ function setupResize(handle, marker, field, container) {
     }
 
     function onUp() {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener(POINTER_MOVE, onMove);
+      document.removeEventListener(POINTER_UP, onUp);
       cursor.style.display = 'block';
     }
 
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    document.addEventListener(POINTER_MOVE, onMove);
+    document.addEventListener(POINTER_UP, onUp);
   });
 }
 

@@ -13,7 +13,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign Document - Penned</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/style.css?v=9">
+  <link rel="stylesheet" href="/style.css?v=18">
   <style>
     header.sign-page-header {
       display: flex;
@@ -197,6 +197,39 @@
     let sigCanvas, sigCtx, isDrawing = false;
     const savedFieldValues = {}; // Persist field values across page navigation
 
+    function useMobileFieldList() {
+      return window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+    }
+
+    const POINTER_DOWN = window.PointerEvent ? 'pointerdown' : 'mousedown';
+    const POINTER_MOVE = window.PointerEvent ? 'pointermove' : 'mousemove';
+    const POINTER_UP = window.PointerEvent ? 'pointerup' : 'mouseup';
+
+    function inputKey(field) { return 'input-' + field.id; }
+
+    function saveAllVisibleFieldValues() {
+      document.querySelectorAll('.inline-field-overlay input, .inline-field-overlay textarea, .mobile-field-card input, .mobile-field-card textarea').forEach(input => {
+        const fieldId = input.dataset.fieldId || (input.id && input.id.replace(/^(input-|mobile-input-)/, ''));
+        if (fieldId) savedFieldValues[inputKey({ id: fieldId })] = input.value;
+      });
+    }
+
+    function valueForField(field) {
+      const desktopInput = document.getElementById(inputKey(field));
+      const mobileInput = document.getElementById('mobile-input-' + field.id);
+      if (desktopInput) return desktopInput.value;
+      if (mobileInput) return mobileInput.value;
+      return savedFieldValues[inputKey(field)] || '';
+    }
+
+    function focusField(field) {
+      const input = document.getElementById(inputKey(field)) || document.getElementById('mobile-input-' + field.id);
+      if (input) {
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => input.focus(), 250);
+      }
+    }
+
     // Returns true if a doc field belongs to whoever is currently viewing the sign page.
     // Sender role: all sender fields. Recipient role: fields tagged with the matching
     // signer_index (or all recipient fields when the doc has no extra signers — back-compat).
@@ -340,18 +373,14 @@
       // Save current input values before removing overlays. Selector must include textareas:
       // text/name fields are rendered as <textarea> (see renderInlineFields below) and were
       // being missed, wiping recipient input on page change.
-      container.querySelectorAll('.inline-field-overlay input, .inline-field-overlay textarea').forEach(input => {
-        if (input.id && input.id.startsWith('input-')) {
-          savedFieldValues[input.id] = input.value;
-        }
-      });
+      saveAllVisibleFieldValues();
       // Remove old overlays
       container.querySelectorAll('.inline-field-overlay').forEach(el => el.remove());
 
       if (!doc || !doc.fields) return;
       const myFields = doc.fields.filter(f => fieldIsMine(f) && f.page === pageNum - 1);
 
-      myFields.forEach(field => {
+      myFields.forEach((field, index) => {
         const overlay = document.createElement('div');
         overlay.className = 'inline-field-overlay' + (field.type === 'signature' ? ' signature-overlay' : '');
         overlay.style.left = field.displayX + '%';
@@ -375,6 +404,18 @@
           // Track this so we can update it when signed
           overlay.dataset.fieldId = field.id;
           overlay.dataset.fieldType = 'signature';
+        } else if (useMobileFieldList()) {
+          overlay.classList.add('mobile-pin-overlay');
+          // On phones the true PDF field box can become too tiny to type into cleanly.
+          // Keep a compact pin on the PDF and render the real input in the mobile
+          // field list below the preview.
+          const pin = document.createElement('button');
+          pin.type = 'button';
+          pin.className = 'mobile-field-pin';
+          pin.textContent = String(index + 1);
+          pin.setAttribute('aria-label', field.label || `Field ${index + 1}`);
+          pin.addEventListener('click', () => focusField(field));
+          overlay.appendChild(pin);
         } else {
           // Use textarea for free-form text/name so long content wraps; date/initials stay
           // as single-line inputs since they're short by nature.
@@ -382,16 +423,19 @@
           const input = document.createElement(isMultiline ? 'textarea' : 'input');
           if (!isMultiline) input.type = field.type === 'date' ? 'date' : 'text';
           if (isMultiline) input.classList.add('inline-textarea');
-          input.id = 'input-' + field.id;
+          input.id = inputKey(field);
+          input.dataset.fieldId = field.id;
           // Restore saved value or set default
           if (savedFieldValues[input.id] !== undefined) {
             input.value = savedFieldValues[input.id];
           } else if (field.type === 'date') {
             input.value = new Date().toISOString().split('T')[0];
+            savedFieldValues[input.id] = input.value;
           } else {
             input.placeholder = field.type === 'name' ? 'Full legal name' :
                                field.type === 'initials' ? 'Initials' : 'Enter text';
           }
+          input.addEventListener('input', () => { savedFieldValues[input.id] = input.value; });
           // Size the input to match the actual PDF field width (scaled to display)
           const canvas = container.querySelector('canvas');
           if (canvas) {
@@ -427,7 +471,7 @@
     // Drag-to-resize for sender text fields on the signing page. Updates field.width/height
     // (in PDF units) so the server draws text into the new dimensions.
     function setupInlineResize(handle, input, field, container) {
-      handle.addEventListener('mousedown', (e) => {
+      handle.addEventListener(POINTER_DOWN, (e) => {
         e.preventDefault();
         e.stopPropagation();
         const startX = e.clientX;
@@ -455,12 +499,12 @@
         }
 
         function onUp() {
-          document.removeEventListener('mousemove', onMove);
-          document.removeEventListener('mouseup', onUp);
+          document.removeEventListener(POINTER_MOVE, onMove);
+          document.removeEventListener(POINTER_UP, onUp);
         }
 
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
+        document.addEventListener(POINTER_MOVE, onMove);
+        document.addEventListener(POINTER_UP, onUp);
       });
     }
 
@@ -483,13 +527,57 @@
         return;
       }
 
-      // Fields are now rendered inline on the PDF — hide the old form area
-      form.innerHTML = '<p class="hint">Fill in the highlighted fields directly on the document above. Navigate pages to find all fields.</p>';
-
       // Count fields per page for the hint
       const pages = [...new Set(myFields.map(f => f.page + 1))].sort((a, b) => a - b);
-      if (pages.length > 1) {
-        form.innerHTML = `<p class="hint">Fill in the highlighted fields on the document above. Your fields are on page${pages.length > 1 ? 's' : ''} ${pages.join(', ')}.</p>`;
+
+      if (useMobileFieldList()) {
+        const fillableFields = myFields.filter(f => f.type !== 'signature');
+        if (fillableFields.length) {
+          const intro = pages.length > 1
+            ? `Use the page pins above as a guide, then fill these fields. Your fields are on pages ${pages.join(', ')}.`
+            : 'Use the pins on the PDF as a guide, then fill these fields below.';
+          form.innerHTML = `<div class="mobile-field-list"><p class="hint">${intro}</p></div>`;
+          const list = form.querySelector('.mobile-field-list');
+          fillableFields.forEach((field, index) => {
+            const isMultiline = field.type === 'text' || field.type === 'name';
+            const card = document.createElement('div');
+            card.className = 'mobile-field-card';
+            const label = document.createElement('label');
+            label.htmlFor = 'mobile-input-' + field.id;
+            label.appendChild(document.createTextNode(`${index + 1}. ${field.label}`));
+            label.appendChild(document.createTextNode(' '));
+            const pageRef = document.createElement('span');
+            pageRef.className = 'page-ref';
+            pageRef.textContent = `Page ${field.page + 1}`;
+            label.appendChild(pageRef);
+            const input = document.createElement(isMultiline ? 'textarea' : 'input');
+            input.id = 'mobile-input-' + field.id;
+            input.dataset.fieldId = field.id;
+            if (!isMultiline) input.type = field.type === 'date' ? 'date' : 'text';
+            input.placeholder = field.type === 'name' ? 'Full legal name' :
+                                field.type === 'initials' ? 'Initials' :
+                                field.type === 'date' ? '' : 'Enter text';
+            const key = inputKey(field);
+            if (savedFieldValues[key] !== undefined) {
+              input.value = savedFieldValues[key];
+            } else if (field.type === 'date') {
+              input.value = new Date().toISOString().split('T')[0];
+              savedFieldValues[key] = input.value;
+            }
+            input.addEventListener('input', () => { savedFieldValues[key] = input.value; });
+            card.appendChild(label);
+            card.appendChild(input);
+            list.appendChild(card);
+          });
+        } else {
+          form.innerHTML = '<p class="hint">Tap the signature field on the document above to sign.</p>';
+        }
+      } else {
+        // Fields are rendered inline on the PDF on tablet/desktop screens.
+        form.innerHTML = '<p class="hint">Fill in the highlighted fields directly on the document above. Navigate pages to find all fields.</p>';
+        if (pages.length > 1) {
+          form.innerHTML = `<p class="hint">Fill in the highlighted fields on the document above. Your fields are on page${pages.length > 1 ? 's' : ''} ${pages.join(', ')}.</p>`;
+        }
       }
 
       // Show signature pad if any signature fields exist (hidden until they click "Click to sign")
@@ -591,11 +679,7 @@
 
       // Save any currently visible input values before collecting (textareas included —
       // text/name fields are rendered as <textarea>).
-      document.querySelectorAll('.inline-field-overlay input, .inline-field-overlay textarea').forEach(input => {
-        if (input.id && input.id.startsWith('input-')) {
-          savedFieldValues[input.id] = input.value;
-        }
-      });
+      saveAllVisibleFieldValues();
 
       const myFields = doc.fields.filter(f => fieldIsMine(f));
       const fieldValues = {};
@@ -603,17 +687,14 @@
       for (const field of myFields) {
         if (field.type === 'signature') continue;
         const inputId = `input-${field.id}`;
-        // Check DOM first, then saved values (for fields on other pages)
-        const input = document.getElementById(inputId);
-        const value = input ? input.value : (savedFieldValues[inputId] || '');
+        const value = valueForField(field);
         if (!value.trim()) {
           // Navigate to the page with the missing field
           if (field.page + 1 !== currentPage) {
             renderPreviewPage(field.page + 1);
           }
           showToast(`Please fill in: ${field.label} (Page ${field.page + 1})`);
-          const targetInput = document.getElementById(inputId);
-          if (targetInput) targetInput.focus();
+          focusField(field);
           return;
         }
         fieldValues[field.id] = value.trim();
@@ -715,20 +796,16 @@
     // the modal — so we don't pop a confirm dialog only to fail validation after.
     function validateBeforeReview() {
       // Save any currently visible input values (include textareas — text/name fields).
-      document.querySelectorAll('.inline-field-overlay input, .inline-field-overlay textarea').forEach(input => {
-        if (input.id && input.id.startsWith('input-')) savedFieldValues[input.id] = input.value;
-      });
+      saveAllVisibleFieldValues();
       const myFields = doc.fields.filter(f => fieldIsMine(f));
       for (const field of myFields) {
         if (field.type === 'signature') continue;
         const inputId = `input-${field.id}`;
-        const input = document.getElementById(inputId);
-        const value = input ? input.value : (savedFieldValues[inputId] || '');
+        const value = valueForField(field);
         if (!value.trim()) {
           if (field.page + 1 !== currentPage) renderPreviewPage(field.page + 1);
           showToast(`Please fill in: ${field.label} (Page ${field.page + 1})`);
-          const tgt = document.getElementById(inputId);
-          if (tgt) tgt.focus();
+          focusField(field);
           return false;
         }
       }
