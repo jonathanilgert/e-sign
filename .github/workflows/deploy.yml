@@ -20,6 +20,11 @@ jobs:
             cd /opt/e-sign
             git fetch origin master
             git reset --hard origin/master
+            if [ -f .env ] && grep -q '^FROM_EMAIL=penned@digitalbuilders\.ca$' .env; then
+              cp .env ".env.backup.$(date -u +%Y%m%d%H%M%S)"
+              sed -i 's/^FROM_EMAIL=penned@digitalbuilders\.ca$/FROM_EMAIL=hello@penned.ca/' .env
+              echo "Updated production FROM_EMAIL to hello@penned.ca"
+            fi
             npm install --omit=dev
             pm2 restart penned
             sleep 2
