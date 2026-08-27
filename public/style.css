@@ -901,6 +901,13 @@ input:focus, select:focus, textarea:focus {
   color: oklch(40% 0.12 50);
 }
 
+.field-marker.recipient .field-marker-label {
+  font-size: 8px;
+  font-weight: 400;
+  line-height: 1.05;
+  color: oklch(34% 0.10 50);
+}
+
 .field-marker .remove-field {
   position: absolute;
   top: -8px;
@@ -1242,11 +1249,22 @@ input:focus, select:focus, textarea:focus {
   border: 2px solid var(--accent);
   border-radius: 6px;
   padding: 3px 6px;
-  font-size: 12px;
+  font-size: 10px;
+  font-weight: 400;
   background: rgba(255, 255, 255, 0.92);
   font-family: inherit;
   width: 150px;
   box-shadow: 0 1px 4px rgba(20, 30, 40, 0.10);
+}
+
+.inline-field-overlay input::placeholder,
+.inline-field-overlay textarea::placeholder,
+.mobile-field-card input::placeholder,
+.mobile-field-card textarea::placeholder {
+  font-size: 9px;
+  font-weight: 400;
+  color: color-mix(in oklch, var(--ink-3) 82%, var(--paper));
+  opacity: 1;
 }
 
 .inline-field-overlay input:focus,
@@ -1434,15 +1452,29 @@ input:focus, select:focus, textarea:focus {
 
   .field-marker.editable .marker-input {
     padding: 1px 3px;
-    font-size: 8px;
-    line-height: 1.08;
+    font-size: 7px;
+    line-height: 1.05;
     font-weight: 400;
     color: #111;
     background: rgba(255, 255, 255, 0.86);
   }
 
+  .field-marker.recipient {
+    align-items: center;
+    padding: 1px 3px;
+    font-size: 7px;
+    font-weight: 400;
+  }
+
+  .field-marker.recipient .field-marker-label {
+    font-size: 7px;
+    font-weight: 400;
+    line-height: 1.05;
+    white-space: normal;
+  }
+
   .field-marker.editable .marker-input-multiline {
-    line-height: 1.12;
+    line-height: 1.05;
   }
 }
 .field-marker.editable .remove-field,

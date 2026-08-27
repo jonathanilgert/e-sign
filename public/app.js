@@ -1213,7 +1213,7 @@ function placeFieldAtPoint(clientX, clientY, container, canvas, startDrag) {
   const fieldH = type === 'signature' ? 50
                : mobileDefaults ? (type === 'initials' || type === 'date' ? 28 : 34)
                : (type === 'initials' ? 18 : 20);
-  const fieldFontSize = mobileDefaults && type !== 'signature' ? 8 : 11;
+  const fieldFontSize = mobileDefaults && type !== 'signature' ? 7 : 11;
 
   const clickX = clientX - rect.left;
   const clickY = clientY - rect.top;

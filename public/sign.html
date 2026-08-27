@@ -13,7 +13,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign Document - Penned</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/style.css?v=24">
+  <link rel="stylesheet" href="/style.css?v=25">
   <style>
     header.sign-page-header {
       display: flex;
@@ -242,6 +242,16 @@
       return fIdx === signerIdx;
     }
 
+    function recipientInstructionForField(field) {
+      const hasExtras = Array.isArray(doc && doc.extra_signers) && doc.extra_signers.length > 0;
+      const fIdx = typeof field.signer_index === 'number' ? field.signer_index : signerIdx;
+      const who = hasExtras ? `Recipient ${fIdx + 1}` : 'Them';
+      const label = field.label || (field.type === 'name' ? 'Full Name'
+                  : field.type === 'initials' ? 'Initials'
+                  : field.type === 'date' ? 'Date' : 'Enter info');
+      return `${who}: ${label}`;
+    }
+
     // --------------- Init ---------------
     document.addEventListener('DOMContentLoaded', async () => {
       await loadDocument();
@@ -386,11 +396,15 @@
         overlay.style.left = field.displayX + '%';
         overlay.style.top = field.displayY + '%';
 
-        // Label above the field
-        const labelEl = document.createElement('div');
-        labelEl.className = 'inline-field-label';
-        labelEl.textContent = field.label;
-        overlay.appendChild(labelEl);
+        // Keep recipient field instructions inside the box as placeholder text;
+        // external labels were too large and looked detached on mobile PDFs.
+        const showExternalLabel = !(role === 'recipient' && field.type !== 'signature');
+        if (showExternalLabel) {
+          const labelEl = document.createElement('div');
+          labelEl.className = 'inline-field-label';
+          labelEl.textContent = field.label;
+          overlay.appendChild(labelEl);
+        }
 
         if (field.type === 'signature') {
           const placeholder = document.createElement('div');
@@ -432,8 +446,9 @@
             input.value = new Date().toISOString().split('T')[0];
             savedFieldValues[input.id] = input.value;
           } else {
-            input.placeholder = field.type === 'name' ? 'Full legal name' :
-                               field.type === 'initials' ? 'Initials' : 'Enter text';
+            input.placeholder = role === 'recipient' ? recipientInstructionForField(field)
+                              : field.type === 'name' ? 'Full legal name'
+                              : field.type === 'initials' ? 'Initials' : 'Enter text';
           }
           input.addEventListener('input', () => { savedFieldValues[input.id] = input.value; });
           // Size the input to match the actual PDF field width (scaled to display)
@@ -544,19 +559,15 @@
             card.className = 'mobile-field-card';
             const label = document.createElement('label');
             label.htmlFor = 'mobile-input-' + field.id;
-            label.appendChild(document.createTextNode(`${index + 1}. ${field.label}`));
-            label.appendChild(document.createTextNode(' '));
-            const pageRef = document.createElement('span');
-            pageRef.className = 'page-ref';
-            pageRef.textContent = `Page ${field.page + 1}`;
-            label.appendChild(pageRef);
+            label.appendChild(document.createTextNode(`Page ${field.page + 1}`));
             const input = document.createElement(isMultiline ? 'textarea' : 'input');
             input.id = 'mobile-input-' + field.id;
             input.dataset.fieldId = field.id;
             if (!isMultiline) input.type = field.type === 'date' ? 'date' : 'text';
-            input.placeholder = field.type === 'name' ? 'Full legal name' :
-                                field.type === 'initials' ? 'Initials' :
-                                field.type === 'date' ? '' : 'Enter text';
+            input.placeholder = role === 'recipient' ? `${index + 1}. ${recipientInstructionForField(field)}`
+                              : field.type === 'name' ? 'Full legal name'
+                              : field.type === 'initials' ? 'Initials'
+                              : field.type === 'date' ? '' : 'Enter text';
             const key = inputKey(field);
             if (savedFieldValues[key] !== undefined) {
               input.value = savedFieldValues[key];
